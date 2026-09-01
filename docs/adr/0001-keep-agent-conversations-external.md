@@ -24,6 +24,11 @@ compatibility honestly.
 - MCP-only integration is portable, but it cannot guarantee that the current
   selection is fetched on each task.
 
+A second, independent reason reinforces this: most agent harnesses cannot be
+built on. Codex is the notable exception. Even if that reading of the terms
+turns out to be wrong, the product argument above stands on its own and the
+decision does not change.
+
 ## Consequences
 
 The Selection Bridge must fail open, return no context for every empty or
