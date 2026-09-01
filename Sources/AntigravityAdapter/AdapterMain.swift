@@ -19,14 +19,35 @@ enum AntigravityAdapterMain {
             ?? BridgeLocation.defaultSocketPath()
         let client = BridgeClient(socketPath: socketPath)
 
+        // Set only inside the `ack` closure below, which AdapterCore calls
+        // only on the has-content path — see ClaudeCodeAdapter/AdapterMain.swift
+        // for why this is how the count reaches the diagnostics log.
+        var injectedSnapshotCount: Int?
+
         let output = AntigravityAdapterCore.handle(
             stdinJSON: stdinData,
             read: { consumerID, conversationID, workingRoot, turnID in
                 client.read(consumerID: consumerID, conversationID: conversationID, workingRoot: workingRoot, turnID: turnID)
             },
             ack: { snapshotIDs, consumptionID in
+                injectedSnapshotCount = snapshotIDs.count
                 client.ack(snapshotIDs: snapshotIDs, consumptionID: consumptionID)
             }
+        )
+
+        // Same override rationale as CONTEXTURE_BRIDGE_SOCKET above — lets
+        // the conformance harness (and any other test) keep every real
+        // subprocess invocation it makes out of the real per-user log.
+        let diagnosticsLogPath = ProcessInfo.processInfo.environment["CONTEXTURE_DIAGNOSTICS_LOG_PATH"]
+            ?? AdapterDiagnosticsLog.defaultPath()
+        AdapterDiagnosticsLog.record(
+            AdapterDiagnosticEntry(
+                timestamp: Date(),
+                adapterID: "antigravity",
+                outcome: injectedSnapshotCount != nil ? .injected : .noInjection,
+                injectedSnapshotCount: injectedSnapshotCount
+            ),
+            path: diagnosticsLogPath
         )
 
         // Unlike ClaudeCodeAdapter, `handle` never returns nil — Antigravity's

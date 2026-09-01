@@ -29,7 +29,13 @@ struct AntigravityAdapterUnderTest: AdapterUnderTest {
 
         let process = Process()
         process.executableURL = executableURL
-        process.environment = ["CONTEXTURE_BRIDGE_SOCKET": bridgeSocketPath]
+        // Also redirects the content-free diagnostics log (issue #12) to a
+        // scratch path alongside the throwaway socket, so a harness run
+        // never writes into the real per-user log.
+        process.environment = [
+            "CONTEXTURE_BRIDGE_SOCKET": bridgeSocketPath,
+            "CONTEXTURE_DIAGNOSTICS_LOG_PATH": bridgeSocketPath + ".diagnostics.log",
+        ]
 
         let stdinPipe = Pipe()
         let stdoutPipe = Pipe()

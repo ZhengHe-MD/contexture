@@ -1,6 +1,11 @@
 import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    // Diagnostics is an app-level concern, not tied to any one Document's
+    // window — one shared window, created lazily and reused across opens,
+    // rather than one per Document the way EditorWindowController is.
+    private lazy var diagnosticsWindowController = DiagnosticsWindowController()
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = AppMenuBuilder.makeMainMenu()
     }
@@ -11,6 +16,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    @objc func showAdapterDiagnostics(_ sender: Any?) {
+        diagnosticsWindowController.showWindow(sender)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 
@@ -101,6 +111,18 @@ enum AppMenuBuilder {
             keyEquivalent: "."
         )
         clearItem.keyEquivalentModifierMask = [.command]
+        sharingMenu.addItem(NSMenuItem.separator())
+        // Unlike the items above, this isn't Document-scoped, so it can't
+        // use the nil-target responder-chain pattern the way those do —
+        // AppDelegate isn't itself part of the responder chain. NSApp.delegate
+        // is already set by the time this menu is built (AppMain.swift sets
+        // it before app.run(), and this only ever runs from
+        // applicationDidFinishLaunching).
+        sharingMenu.addItem(
+            withTitle: "Adapter Diagnostics…",
+            action: #selector(AppDelegate.showAdapterDiagnostics(_:)),
+            keyEquivalent: ""
+        ).target = NSApp.delegate
 
         let windowMenuItem = NSMenuItem()
         mainMenu.addItem(windowMenuItem)

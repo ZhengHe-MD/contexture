@@ -18,14 +18,37 @@ enum ClaudeCodeAdapterMain {
             ?? BridgeLocation.defaultSocketPath()
         let client = BridgeClient(socketPath: socketPath)
 
+        // Set only inside the `ack` closure below, which AdapterCore calls
+        // only on the has-content path — this is how the count reaches the
+        // diagnostics log without AdapterCore's return type needing to
+        // carry anything beyond "the bytes to write to stdout" (issue #12:
+        // diagnostics are a side channel, not the adapter's actual job).
+        var injectedSnapshotCount: Int?
+
         let output = ClaudeCodeAdapterCore.handle(
             stdinJSON: stdinData,
             read: { consumerID, conversationID, workingRoot, turnID in
                 client.read(consumerID: consumerID, conversationID: conversationID, workingRoot: workingRoot, turnID: turnID)
             },
             ack: { snapshotIDs, consumptionID in
+                injectedSnapshotCount = snapshotIDs.count
                 client.ack(snapshotIDs: snapshotIDs, consumptionID: consumptionID)
             }
+        )
+
+        // Same override rationale as CONTEXTURE_BRIDGE_SOCKET above — lets
+        // the conformance harness (and any other test) keep every real
+        // subprocess invocation it makes out of the real per-user log.
+        let diagnosticsLogPath = ProcessInfo.processInfo.environment["CONTEXTURE_DIAGNOSTICS_LOG_PATH"]
+            ?? AdapterDiagnosticsLog.defaultPath()
+        AdapterDiagnosticsLog.record(
+            AdapterDiagnosticEntry(
+                timestamp: Date(),
+                adapterID: "claude-code",
+                outcome: injectedSnapshotCount != nil ? .injected : .noInjection,
+                injectedSnapshotCount: injectedSnapshotCount
+            ),
+            path: diagnosticsLogPath
         )
 
         if let output {

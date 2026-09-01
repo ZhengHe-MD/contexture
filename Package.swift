@@ -27,7 +27,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "ContextureApp",
-            dependencies: ["ContextureKit", "SelectionBridge"],
+            dependencies: ["ContextureKit", "SelectionBridge", "BridgeClient"],
             resources: [
                 .copy("Resources/editor")
             ]

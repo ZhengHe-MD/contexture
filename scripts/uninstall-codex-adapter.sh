@@ -48,3 +48,9 @@ if [ -f "$BIN_PATH" ]; then
 else
   echo "No installed binary at $BIN_PATH; nothing to remove"
 fi
+
+# Clean up INSTALL_DIR only if it's now empty — never touch it if the
+# Claude Code or Antigravity adapter (or anything else) still lives there.
+if [ -d "$INSTALL_DIR" ] && [ -z "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
+  rmdir "$INSTALL_DIR"
+fi
