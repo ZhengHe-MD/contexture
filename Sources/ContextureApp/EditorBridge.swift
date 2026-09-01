@@ -19,6 +19,11 @@ protocol EditorBridgeDelegate: AnyObject {
     func editorBridgeDidBecomeReady()
     func editorBridgeContentDidChange(_ text: String)
     func editorBridgeSelectionDidChange(_ change: EditorSelectionChange)
+    /// `html` is the Source rendered to HTML by `markdown-it` in
+    /// editor-web/src/main.js — untrusted (GFM raw HTML passthrough is on),
+    /// and not yet sanitized or CSP-wrapped for the Preview pane. See
+    /// `PreviewDocumentBuilder`.
+    func editorBridgePreviewHTMLDidChange(_ html: String)
 }
 
 /// `WKScriptMessageHandler` is a strong-retaining relationship from the
@@ -49,6 +54,10 @@ final class EditorBridgeMessageHandler: NSObject, WKScriptMessageHandler {
                     column: body["column"] as? Int
                 )
                 delegate?.editorBridgeSelectionDidChange(change)
+            }
+        case "previewHTML":
+            if let html = body["html"] as? String {
+                delegate?.editorBridgePreviewHTMLDidChange(html)
             }
         default:
             break

@@ -8,6 +8,27 @@
   <body>
     <div id="root">
       <div id="editor"></div>
+      <div id="divider" role="separator" aria-orientation="vertical"></div>
+      <!--
+        Preview isolation (see docs/adr/0002-codemirror-in-a-web-view.md and
+        Sources/ContextureApp/PreviewDocumentBuilder.swift):
+          - sandbox="allow-same-origin" grants no scripting permission
+            (allow-scripts is deliberately absent, so nothing rendered here
+            can execute, however it got in), and the only reason for
+            allow-same-origin at all is so this trusted outer page can read
+            and restore the frame's scroll position across reloads — it
+            does not by itself permit script execution.
+          - Its document is always set via `.srcdoc` from native Swift
+            (window.__contexture_setPreviewHTML below), never navigated to a
+            URL, and that document embeds its own strict CSP meta tag that
+            blocks every non-local resource load independent of scripting.
+      -->
+      <iframe
+        id="preview"
+        title="Preview"
+        sandbox="allow-same-origin"
+        referrerpolicy="no-referrer"
+      ></iframe>
     </div>
     <script src="bundle.js"></script>
   </body>

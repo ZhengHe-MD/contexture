@@ -16,11 +16,30 @@ body {
   width: 100vw;
 }
 
-#editor {
-  flex: 1;
+/* Source and Preview sit in a full-height split with a divider that runs
+   continuously from the top of the content area to the bottom (docs/product.md
+   "Writing experience"; ADR-0002 renders that divider as CSS flex layout
+   inside this one web view rather than an NSSplitView). */
+#editor,
+#preview {
+  flex: 1 1 50%;
   min-width: 0;
   height: 100%;
+}
+
+#editor {
   overflow: hidden;
+}
+
+#preview {
+  border: 0;
+  background: transparent;
+}
+
+#divider {
+  flex: 0 0 1px;
+  align-self: stretch;
+  background: rgba(128, 128, 128, 0.35);
 }
 
 .cm-editor {
