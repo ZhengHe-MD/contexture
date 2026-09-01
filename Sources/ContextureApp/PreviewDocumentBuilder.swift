@@ -41,6 +41,15 @@ enum PreviewDocumentBuilder {
     /// Minimal styling so GFM tables and fenced code blocks are legible;
     /// `color-scheme: light dark` follows the writer's system appearance
     /// the same way `editor-web/src/editor.css` does for the Source pane.
+    ///
+    /// `.contexture-selected` is the synchronized-Selection highlight
+    /// (issue #5): the outer trusted page's own script — never anything
+    /// running inside this sandboxed document — adds/removes that class on
+    /// the block-level element(s) `editor-web/src/blockMap.js`'s
+    /// `data-src` attributes resolve a Source (or Preview) Selection to.
+    /// It lives here, in the trusted wrapper this class builds, rather
+    /// than in `bodyHTML`, so a Document could never smuggle a same-named
+    /// class to spoof the highlight.
     private static let style = """
     :root { color-scheme: light dark; }
     body { margin: 0; padding: 12px 16px; font: 14px -apple-system, system-ui, sans-serif; line-height: 1.55; word-wrap: break-word; }
@@ -50,6 +59,7 @@ enum PreviewDocumentBuilder {
     pre { overflow-x: auto; padding: 8px; background: rgba(128, 128, 128, 0.12); border-radius: 4px; }
     code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9em; }
     pre code { font-size: 1em; }
+    .contexture-selected { background: rgba(255, 190, 40, 0.35); outline: 1px solid rgba(200, 140, 0, 0.6); outline-offset: 1px; border-radius: 3px; }
     """
 
     /// `bodyHTML` is untrusted Markdown-rendered output (see

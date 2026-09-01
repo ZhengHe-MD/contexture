@@ -51,6 +51,16 @@ import Testing
         #expect(document.contains("data:image/png;base64,AAAA"))
     }
 
+    @Test func embedsTheSynchronizedSelectionHighlightStyle() {
+        // issue #5: the outer trusted page's own script (never anything
+        // running inside this sandboxed document) toggles this class on the
+        // block-level element(s) a Selection maps to. It must come from
+        // this trusted wrapper, not from bodyHTML, so a Document's own
+        // content could never spoof it by declaring a same-named class.
+        let document = PreviewDocumentBuilder.buildDocument(bodyHTML: "<p>hi</p>")
+        #expect(document.contains(".contexture-selected"))
+    }
+
     @Test func producesAWellFormedStandaloneDocument() {
         let document = PreviewDocumentBuilder.buildDocument(bodyHTML: "<p>hi</p>")
         #expect(document.hasPrefix("<!doctype html>"))
