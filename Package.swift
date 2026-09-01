@@ -36,6 +36,10 @@ let package = Package(
         .testTarget(
             name: "SelectionBridgeTests",
             dependencies: ["SelectionBridge", "ContextureKit"]
+        ),
+        .testTarget(
+            name: "ContextureAppTests",
+            dependencies: ["ContextureApp"]
         )
     ]
 )
