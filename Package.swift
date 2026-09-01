@@ -12,7 +12,8 @@ let package = Package(
         .library(name: "BridgeClient", targets: ["BridgeClient"]),
         .executable(name: "ContextureApp", targets: ["ContextureApp"]),
         .executable(name: "ClaudeCodeAdapter", targets: ["ClaudeCodeAdapter"]),
-        .executable(name: "CodexAdapter", targets: ["CodexAdapter"])
+        .executable(name: "CodexAdapter", targets: ["CodexAdapter"]),
+        .executable(name: "AntigravityAdapter", targets: ["AntigravityAdapter"])
     ],
     targets: [
         .target(name: "ContextureKit"),
@@ -37,6 +38,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "CodexAdapter",
+            dependencies: ["ContextureKit", "BridgeClient"]
+        ),
+        .executableTarget(
+            name: "AntigravityAdapter",
             dependencies: ["ContextureKit", "BridgeClient"]
         ),
         .target(
@@ -66,6 +71,10 @@ let package = Package(
         .testTarget(
             name: "CodexAdapterTests",
             dependencies: ["CodexAdapter", "BridgeClient", "ContextureKit", "ConformanceHarness"]
+        ),
+        .testTarget(
+            name: "AntigravityAdapterTests",
+            dependencies: ["AntigravityAdapter", "BridgeClient", "ContextureKit", "ConformanceHarness", "SelectionBridge"]
         )
     ]
 )
