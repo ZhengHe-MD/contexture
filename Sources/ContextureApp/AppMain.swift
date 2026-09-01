@@ -14,6 +14,14 @@ enum ContextureMain {
         // otherwise lazily create.
         _ = AppDocumentController()
 
+        // Best-effort: an unreachable-to-start Bridge (e.g. a permissions
+        // problem in ~/Library/Application Support) must not stop
+        // Contexture from being a complete editor on its own — it just
+        // means no Selection reaches any Agent Host until the app is
+        // relaunched or the underlying problem is fixed. Issue #12 is where
+        // this failure becomes something the writer can actually see.
+        try? AppServices.bridgeServer.start()
+
         let app = NSApplication.shared
         app.setActivationPolicy(.regular)
         let delegate = AppDelegate()

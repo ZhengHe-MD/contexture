@@ -31,6 +31,9 @@ final class EditorWindowController: NSWindowController {
         editorViewController.onContentChanged = { [weak self] newText in
             (self?.document as? MarkdownDocument)?.updateText(newText)
         }
+        editorViewController.onSelectionChanged = { [weak self] change in
+            (self?.document as? MarkdownDocument)?.publishSelection(change)
+        }
     }
 
     /// Used ahead of save to read the live editor rather than the last

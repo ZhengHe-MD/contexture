@@ -10,7 +10,8 @@ let package = Package(
         .library(name: "ContextureKit", targets: ["ContextureKit"]),
         .library(name: "SelectionBridge", targets: ["SelectionBridge"]),
         .library(name: "BridgeClient", targets: ["BridgeClient"]),
-        .executable(name: "ContextureApp", targets: ["ContextureApp"])
+        .executable(name: "ContextureApp", targets: ["ContextureApp"]),
+        .executable(name: "ClaudeCodeAdapter", targets: ["ClaudeCodeAdapter"])
     ],
     targets: [
         .target(name: "ContextureKit"),
@@ -29,6 +30,10 @@ let package = Package(
                 .copy("Resources/editor")
             ]
         ),
+        .executableTarget(
+            name: "ClaudeCodeAdapter",
+            dependencies: ["ContextureKit", "BridgeClient"]
+        ),
         .testTarget(
             name: "ContextureKitTests",
             dependencies: ["ContextureKit"]
@@ -38,8 +43,16 @@ let package = Package(
             dependencies: ["SelectionBridge", "ContextureKit"]
         ),
         .testTarget(
+            name: "BridgeClientTests",
+            dependencies: ["BridgeClient", "SelectionBridge", "ContextureKit"]
+        ),
+        .testTarget(
             name: "ContextureAppTests",
             dependencies: ["ContextureApp"]
+        ),
+        .testTarget(
+            name: "ClaudeCodeAdapterTests",
+            dependencies: ["ClaudeCodeAdapter", "BridgeClient", "ContextureKit"]
         )
     ]
 )

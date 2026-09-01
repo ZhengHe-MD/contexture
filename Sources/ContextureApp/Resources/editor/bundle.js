@@ -63309,6 +63309,7 @@
     }
   }
   var suppressChangeNotification = false;
+  var byteLength = (text5) => new TextEncoder().encode(text5).length;
   var view = new EditorView({
     state: EditorState.create({
       doc: "",
@@ -63322,8 +63323,24 @@
           autocapitalize: "sentences"
         }),
         EditorView.updateListener.of((update) => {
-          if (update.docChanged && !suppressChangeNotification) {
+          if (suppressChangeNotification) return;
+          if (update.docChanged) {
             postToNative({ type: "contentChanged", text: view.state.doc.toString() });
+          }
+          if (update.selectionSet) {
+            const range = view.state.selection.main;
+            if (!range.empty) {
+              const text5 = view.state.sliceDoc(range.from, range.to);
+              const line = view.state.doc.lineAt(range.head);
+              postToNative({
+                type: "selectionChanged",
+                text: text5,
+                byteStart: byteLength(view.state.sliceDoc(0, range.from)),
+                byteEnd: byteLength(view.state.sliceDoc(0, range.to)),
+                line: line.number,
+                column: range.head - line.from + 1
+              });
+            }
           }
         })
       ]

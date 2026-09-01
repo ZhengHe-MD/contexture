@@ -11,6 +11,7 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate {
     private var isReady = false
 
     var onContentChanged: ((String) -> Void)?
+    var onSelectionChanged: ((EditorSelectionChange) -> Void)?
 
     init() {
         let configuration = WKWebViewConfiguration()
@@ -89,5 +90,9 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate {
 
     func editorBridgeContentDidChange(_ text: String) {
         onContentChanged?(text)
+    }
+
+    func editorBridgeSelectionDidChange(_ change: EditorSelectionChange) {
+        onSelectionChanged?(change)
     }
 }

@@ -1,4 +1,5 @@
 import AppKit
+import ContextureKit
 
 /// A Document (CONTEXT.md) backed by a local Markdown file. This is the
 /// only Document type today, but nothing here is welded to Markdown
@@ -6,9 +7,46 @@ import AppKit
 /// Document subclass, so a second format registers a second mapping rather
 /// than changing this class or its NSDocument plumbing.
 final class MarkdownDocument: NSDocument {
+    let documentID = DocumentID()
+    private let sourceWindowID = SourceWindowID()
+    private var selectionVersion = 0
+
     private(set) var text: String = ""
 
     override class var autosavesInPlace: Bool { true }
+
+    /// Not yet the true Working-Root-relative path the architecture doc
+    /// calls for — that needs a caller-supplied Working Root to compute
+    /// against, which arrives with issue #8's scoping. Using just the
+    /// filename here is a safe, deliberately conservative placeholder: it
+    /// never leaks an absolute path (ADR-0004), the one hard invariant
+    /// that must hold regardless.
+    private var relativePathForSharing: String {
+        fileURL?.lastPathComponent ?? displayName ?? "Untitled"
+    }
+
+    /// Selecting is sharing — there is no separate share gesture
+    /// (docs/product.md "Arming"). Called for every non-empty Selection the
+    /// editor reports; a collapse to an empty range is never reported (see
+    /// editor-web/src/main.js), so Arming naturally survives it.
+    func publishSelection(_ change: EditorSelectionChange) {
+        selectionVersion += 1
+        let snapshot = SelectionSnapshot(
+            documentID: documentID,
+            sourceBytes: Data(change.text.utf8),
+            format: .markdown,
+            relativePath: relativePathForSharing,
+            revision: RevisionHash(contentBytes: Data(text.utf8)),
+            byteRange: SourceByteRange(lowerBound: change.byteStart, upperBound: change.byteEnd),
+            displayLine: change.line,
+            displayColumn: change.column,
+            sharingMode: .nextPrompt,
+            createdAt: Date(),
+            sourceWindow: sourceWindowID,
+            version: selectionVersion
+        )
+        AppServices.bridgeServer.publish(snapshot)
+    }
 
     override func makeWindowControllers() {
         let controller = EditorWindowController()
