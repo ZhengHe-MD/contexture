@@ -1,9 +1,19 @@
 import AppKit
 import WebKit
 
-/// Hosts the Source pane: CodeMirror 6 running inside a `WKWebView`, per
-/// ADR-0002. Owns nothing about NSDocument; it only reports raw text changes
-/// and answers for the editor's current content on demand.
+/// Hosts the Source and Preview panes side by side in one `WKWebView`, per
+/// ADR-0002 ("the split divider is CSS inside the web view rather than an
+/// NSSplitView"). Owns nothing about NSDocument; it only reports raw text
+/// changes and answers for the editor's current content on demand.
+///
+/// The Source pane (CodeMirror) and the outer page's own JS (which turns
+/// Source into Preview HTML via markdown-it — editor-web/src/main.js) are
+/// trusted first-party content and need JavaScript, so this WKWebView keeps
+/// JS enabled overall. The Preview pane is instead isolated at the DOM
+/// level: its content lives in a sandboxed `<iframe>` (no `allow-scripts`)
+/// whose `srcdoc` is a document `PreviewDocumentBuilder` sanitizes and
+/// wraps in a strict CSP before this controller ever hands it to the web
+/// view. See `editorBridgePreviewHTMLDidChange(_:)` below.
 final class EditorViewController: NSViewController, EditorBridgeDelegate {
     private let webView: WKWebView
     private let messageHandler = EditorBridgeMessageHandler()
@@ -16,10 +26,15 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate {
         let configuration = WKWebViewConfiguration()
         let contentController = WKUserContentController()
         configuration.userContentController = contentController
-        // No JavaScript execution beyond the bundled editor script is needed,
-        // but CodeMirror itself is JS — this pane is trusted first-party
-        // content, unlike the Preview pane (issue #4), which renders
-        // untrusted Document HTML and must disable JS entirely.
+        // This WKWebView runs JavaScript: CodeMirror (Source) needs it, and
+        // so does the outer page's own script that renders Source to
+        // Preview HTML. Both are trusted first-party content (the bundled
+        // editor script). The untrusted part — the Document's own Markdown
+        // rendered to HTML, which may contain raw <script>/<img
+        // src=remote>/etc. per GFM — never runs as script in this webview
+        // at all; it only ever becomes the `srcdoc` of a sandboxed iframe
+        // with no `allow-scripts` (see EditorViewController's class doc
+        // comment and PreviewDocumentBuilder).
         self.webView = WKWebView(frame: .zero, configuration: configuration)
         super.init(nibName: nil, bundle: nil)
         contentController.add(messageHandler, name: "contexture")
@@ -89,5 +104,19 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate {
 
     func editorBridgeContentDidChange(_ text: String) {
         onContentChanged?(text)
+    }
+
+    /// `html` is untrusted (see the protocol doc comment). It is sanitized
+    /// and wrapped in a CSP-bearing document by `PreviewDocumentBuilder`
+    /// here in native Swift — not in the web view's own JS — specifically
+    /// so this security-relevant transform has ordinary headless Swift unit
+    /// test coverage (see PreviewSanitizerTests/PreviewDocumentBuilderTests)
+    /// rather than living only in editor-web where this project has no
+    /// equivalent headless test setup.
+    func editorBridgePreviewHTMLDidChange(_ html: String) {
+        let document = PreviewDocumentBuilder.buildDocument(bodyHTML: html)
+        guard let payload = try? JSONEncoder().encode(document),
+              let json = String(data: payload, encoding: .utf8) else { return }
+        webView.evaluateJavaScript("window.__contexture_setPreviewHTML(\(json))")
     }
 }
