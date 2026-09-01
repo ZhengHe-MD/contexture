@@ -41,4 +41,21 @@ final class EditorWindowController: NSWindowController {
     func currentEditorContent(_ completion: @escaping (String?) -> Void) {
         editorViewController.fetchCurrentContent(completion)
     }
+
+    /// Pushes text into the editor surface without marking the Document
+    /// dirty — used when the file on disk changed underneath a clean
+    /// buffer (issue #7).
+    func reloadContent(_ text: String) {
+        editorViewController.load(initialText: text)
+    }
+
+    /// A Document with no path cannot publish a Selection Snapshot at all
+    /// (ADR-0003: publishing flushes to disk first). `nil` clears the
+    /// reason once the Document has somewhere to flush to. Surfaced as the
+    /// window's subtitle — separate from whatever Armed-selection indicator
+    /// issue #6 adds, since this reflects "can this Document share at all,"
+    /// not "is a Selection Armed right now."
+    func setCannotShareReason(_ reason: String?) {
+        window?.subtitle = reason ?? ""
+    }
 }
