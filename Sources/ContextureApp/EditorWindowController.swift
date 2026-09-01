@@ -27,6 +27,11 @@ final class EditorWindowController: NSWindowController {
         super.windowDidLoad()
         if let markdownDocument = document as? MarkdownDocument {
             editorViewController.load(initialText: markdownDocument.text)
+            let armedIndicator = ArmedIndicatorViewController(
+                documentID: markdownDocument.documentID,
+                bridgeServer: AppServices.bridgeServer
+            )
+            window?.addTitlebarAccessoryViewController(armedIndicator)
         }
         editorViewController.onContentChanged = { [weak self] newText in
             (self?.document as? MarkdownDocument)?.updateText(newText)

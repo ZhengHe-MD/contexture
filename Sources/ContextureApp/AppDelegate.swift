@@ -64,6 +64,44 @@ enum AppMenuBuilder {
         editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
 
+        let sharingMenuItem = NSMenuItem()
+        mainMenu.addItem(sharingMenuItem)
+        let sharingMenu = NSMenu(title: "Sharing")
+        sharingMenuItem.submenu = sharingMenu
+        // Off / Next Prompt are mutually exclusive (docs/product.md
+        // "Sharing modes"); MarkdownDocument.validateMenuItem(_:) is what
+        // actually checks the currently-active one. These dispatch through
+        // the responder chain to the key window's document exactly like
+        // the File menu's NSDocument actions do — see this enum's doc
+        // comment — except these selectors are defined on MarkdownDocument
+        // itself rather than being AppKit-standard ones.
+        sharingMenu.addItem(
+            withTitle: "Off",
+            action: #selector(MarkdownDocument.setSharingModeOff(_:)),
+            keyEquivalent: ""
+        )
+        sharingMenu.addItem(
+            withTitle: "Next Prompt",
+            action: #selector(MarkdownDocument.setSharingModeNextPrompt(_:)),
+            keyEquivalent: ""
+        )
+        sharingMenu.addItem(NSMenuItem.separator())
+        // The "single-key clear" the persistent Armed indicator promises
+        // (docs/product.md "Arming"). Command-Period rather than a bare
+        // Escape: Escape is CodeMirror's own key for dismissing its search
+        // panel/autocomplete inside the Source pane's WKWebView, and a
+        // window's performKeyEquivalent walks the view hierarchy before
+        // falling through to the menu, so a plain Escape could be consumed
+        // there before it ever reaches this item. Command-Period is
+        // macOS's long-standing "cancel/stop" shortcut, semantically close
+        // to "clear," and unclaimed by anything else in this menu bar.
+        let clearItem = sharingMenu.addItem(
+            withTitle: "Clear Armed Snapshot",
+            action: #selector(MarkdownDocument.clearArmedSnapshot(_:)),
+            keyEquivalent: "."
+        )
+        clearItem.keyEquivalentModifierMask = [.command]
+
         let windowMenuItem = NSMenuItem()
         mainMenu.addItem(windowMenuItem)
         let windowMenu = NSMenu(title: "Window")

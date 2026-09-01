@@ -13,6 +13,14 @@ final class MarkdownDocument: NSDocument {
 
     private(set) var text: String = ""
 
+    /// Writer-controlled lifetime of Selection Context for this Document
+    /// (docs/product.md "Sharing modes"). Next Prompt is the product
+    /// default. Pinned is out of scope (docs/product.md), so this is not
+    /// exposed as anything richer than the two-case `SharingMode` it wraps.
+    /// Persists on this Document instance across selections — it is not
+    /// reset by any individual Selection.
+    private(set) var sharingMode: SharingMode = .nextPrompt
+
     override class var autosavesInPlace: Bool { true }
 
     /// Not yet the true Working-Root-relative path the architecture doc
@@ -29,7 +37,13 @@ final class MarkdownDocument: NSDocument {
     /// (docs/product.md "Arming"). Called for every non-empty Selection the
     /// editor reports; a collapse to an empty range is never reported (see
     /// editor-web/src/main.js), so Arming naturally survives it.
+    ///
+    /// Off means no Selection Context is made available at all
+    /// (docs/product.md "Sharing modes") — the simplest way to guarantee
+    /// that is to never Arm anything in the first place rather than Arm and
+    /// filter later.
     func publishSelection(_ change: EditorSelectionChange) {
+        guard sharingMode != .off else { return }
         selectionVersion += 1
         let snapshot = SelectionSnapshot(
             documentID: documentID,
@@ -40,12 +54,26 @@ final class MarkdownDocument: NSDocument {
             byteRange: SourceByteRange(lowerBound: change.byteStart, upperBound: change.byteEnd),
             displayLine: change.line,
             displayColumn: change.column,
-            sharingMode: .nextPrompt,
+            sharingMode: sharingMode,
             createdAt: Date(),
             sourceWindow: sourceWindowID,
             version: selectionVersion
         )
         AppServices.bridgeServer.publish(snapshot)
+    }
+
+    /// Changes this Document's Sharing Mode (docs/product.md "Sharing
+    /// modes"). Switching to Off also clears whatever is currently Armed
+    /// for this Document — "no Selection Context is made available at all"
+    /// must hold immediately, not just for the next Selection. Switching
+    /// away from Off never retroactively Arms anything: selecting is
+    /// sharing, so only a new Selection Arms a Snapshot.
+    func setSharingMode(_ mode: SharingMode) {
+        guard mode != sharingMode else { return }
+        sharingMode = mode
+        if mode == .off {
+            AppServices.bridgeServer.clear(documentID: documentID)
+        }
     }
 
     override func makeWindowControllers() {
@@ -77,6 +105,14 @@ final class MarkdownDocument: NSDocument {
         guard newText != text else { return }
         text = newText
         updateChangeCount(.changeDone)
+        // An edit invalidates whatever was Armed for this Document by
+        // revision mismatch (docs/architecture/selection-bridge.md
+        // "Lifecycle and deduplication") — the writer typed, so the old
+        // Snapshot's content is stale, full stop. Clearing here proactively
+        // is simpler than comparing revision hashes at read time, and
+        // leaves that machinery (flush-on-publish, external-write
+        // reconciliation) to issue #7.
+        AppServices.bridgeServer.clear(documentID: documentID)
     }
 
     /// Reads the live editor surface before writing, so save never races an
@@ -101,6 +137,68 @@ final class MarkdownDocument: NSDocument {
                 self.text = latest
             }
             super.save(to: url, ofType: typeName, for: saveOperation, completionHandler: completionHandler)
+        }
+    }
+
+    /// Closing a Document is one of the ways its Selection Snapshot stops
+    /// being Armed (docs/architecture/selection-bridge.md "Lifecycle and
+    /// deduplication") — once the window is gone, nothing else would ever
+    /// supersede or clear it.
+    override func close() {
+        clearArmedSnapshotForClose()
+        super.close()
+    }
+
+    /// The clearing half of `close()`, pulled out as its own internal
+    /// method so it is exercisable directly from a unit test. Calling the
+    /// real `NSDocument.close()` from a headless test touches
+    /// `NSDocumentController.shared` (creating a plain base-class instance
+    /// the first time anything does) and, for a dirty Document, can
+    /// synchronously prompt a save-changes panel — both are unsafe to rely
+    /// on outside a running app. See also `AppDocumentControllerTests.swift`
+    /// for the same concern around `NSDocumentController` subclasses.
+    func clearArmedSnapshotForClose() {
+        AppServices.bridgeServer.clear(documentID: documentID)
+    }
+
+    // MARK: Sharing Mode menu actions
+
+    /// Wired from `AppMenuBuilder`'s Sharing menu with a `nil` target, the
+    /// same responder-chain pattern the File menu's `NSDocument` actions
+    /// already use — see that enum's doc comment.
+    @objc func setSharingModeOff(_ sender: Any?) {
+        setSharingMode(.off)
+    }
+
+    @objc func setSharingModeNextPrompt(_ sender: Any?) {
+        setSharingMode(.nextPrompt)
+    }
+
+    /// The "single-key clear" the persistent Armed indicator promises
+    /// (docs/product.md "Arming") — same clear path as an edit or a close.
+    @objc func clearArmedSnapshot(_ sender: Any?) {
+        AppServices.bridgeServer.clear(documentID: documentID)
+    }
+}
+
+extension MarkdownDocument {
+    /// Adds checkmark state for the Sharing menu's mutually exclusive
+    /// Off/Next Prompt pair. `NSDocument` already conforms to
+    /// `NSMenuItemValidation` and uses this to drive its own standard items
+    /// (Save, Revert, …), so any other action falls through to `super` to
+    /// preserve that existing behavior (e.g. disabling Save when unedited).
+    override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(setSharingModeOff(_:)):
+            menuItem.state = sharingMode == .off ? .on : .off
+            return true
+        case #selector(setSharingModeNextPrompt(_:)):
+            menuItem.state = sharingMode == .nextPrompt ? .on : .off
+            return true
+        case #selector(clearArmedSnapshot(_:)):
+            return true
+        default:
+            return super.validateMenuItem(menuItem)
         }
     }
 }
