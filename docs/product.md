@@ -88,7 +88,10 @@ persistent count of Armed snapshots and offers a single-key clear.
   instructions.
 - Do not log Selection contents by default.
 - Bind local services to a user-only Unix domain socket at mode `0600`.
-- Render the Preview with JavaScript disabled and remote loads blocked.
+- Render the Preview so its Document content cannot execute scripts or
+  make remote loads (see ADR-0002 for the isolation mechanism — Source and
+  Preview share one web view, so this holds even though that view's
+  JavaScript is not literally disabled overall).
 
 ## Document authority
 

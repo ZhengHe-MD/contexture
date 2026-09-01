@@ -32,8 +32,14 @@ split divider is CSS inside the web view rather than an `NSSplitView`, which
 satisfies the continuous full-height requirement visually but is not literally
 native.
 
-The Preview web view runs with JavaScript disabled and remote loads blocked.
-This is not optional: GFM permits raw HTML inside a Document, so a Document
+The Preview's rendered Document content runs with no script execution and no
+remote loads — not literally "JavaScript disabled" on this web view, since
+Source and Preview share one `WKWebView` and the Source pane's CodeMirror
+needs JavaScript. Isolation instead happens at the DOM level (issue #4): the
+untrusted rendered HTML lives in a `sandbox="allow-same-origin"` iframe with
+`allow-scripts` deliberately absent, wrapped in a document with a strict
+Content-Security-Policy blocking every non-`data:` resource fetch. This is
+not optional: GFM permits raw HTML inside a Document, so a Document
 containing a remote image would otherwise turn the Preview into a beacon
 reporting when the writer opened the file.
 

@@ -77,20 +77,16 @@ public struct SelectionSnapshot: Sendable, Hashable {
     /// construct or observe a snapshot with a different one than they
     /// started with, since nothing here re-exposes it over the wire.
     public func withRelativePath(_ newRelativePath: String) -> SelectionSnapshot {
-        var copy = self
-        copy = SelectionSnapshot(
-            id: id, documentID: documentID, sourceBytes: sourceBytes, format: format,
-            relativePath: newRelativePath, absolutePath: absolutePath, revision: revision,
-            byteRange: byteRange, displayLine: displayLine, displayColumn: displayColumn,
-            headingTrail: headingTrail, sharingMode: sharingMode, createdAt: createdAt,
-            sourceWindow: sourceWindow, version: version
-        )
-        return copy
+        copy(relativePath: newRelativePath, sourceBytes: sourceBytes)
     }
 
     public func withSourceBytes(_ newSourceBytes: Data) -> SelectionSnapshot {
+        copy(relativePath: relativePath, sourceBytes: newSourceBytes)
+    }
+
+    private func copy(relativePath: String, sourceBytes: Data) -> SelectionSnapshot {
         SelectionSnapshot(
-            id: id, documentID: documentID, sourceBytes: newSourceBytes, format: format,
+            id: id, documentID: documentID, sourceBytes: sourceBytes, format: format,
             relativePath: relativePath, absolutePath: absolutePath, revision: revision,
             byteRange: byteRange, displayLine: displayLine, displayColumn: displayColumn,
             headingTrail: headingTrail, sharingMode: sharingMode, createdAt: createdAt,

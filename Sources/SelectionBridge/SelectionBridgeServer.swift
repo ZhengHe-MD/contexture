@@ -18,6 +18,7 @@ public struct ArmedChangeObserverToken: Sendable, Hashable {
 public final class SelectionBridgeServer {
     private let store: SelectionStore
     private let transport: UnixSocketServer
+    private let rateLimiter: RateLimiter
 
     // SelectionStore has no observation API of its own (issue #6's design
     // note deliberately keeps that core API untouched so it doesn't overlap
@@ -29,13 +30,19 @@ public final class SelectionBridgeServer {
     private let observersLock = NSLock()
     private var armedChangeObservers: [UUID: () -> Void] = [:]
 
-    public init(socketPath: String = BridgeLocation.defaultSocketPath(), store: SelectionStore = SelectionStore()) {
+    public init(
+        socketPath: String = BridgeLocation.defaultSocketPath(),
+        store: SelectionStore = SelectionStore(),
+        rateLimiter: RateLimiter = RateLimiter()
+    ) {
         self.store = store
         self.transport = UnixSocketServer(socketPath: socketPath)
+        self.rateLimiter = rateLimiter
     }
 
     public func start() throws {
-        try transport.start { [weak self, store] request in
+        try transport.start { [weak self, store, rateLimiter] request in
+            guard rateLimiter.allowRequest() else { return .empty(429) }
             let response = Self.route(request, store: store)
             if Self.mutatesArming(request.path) {
                 self?.notifyArmedChangeObservers()
