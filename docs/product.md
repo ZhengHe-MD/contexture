@@ -114,7 +114,10 @@ The first product should include:
 - Selection Snapshot capture, Arming, and visible sharing state;
 - the local Selection Bridge over a Unix domain socket;
 - deterministic adapters for Codex, Claude Code, and Antigravity;
-- the shared black-box test harness, built before the adapters;
+- the shared black-box test harness, built after the first adapter and
+  before the second and third — a conformance target has nothing to test
+  against until one real adapter exists, and earns its keep precisely where
+  a second and third are about to land together;
 - installation diagnostics and a clean uninstall path for every adapter.
 
 The first product should not include:

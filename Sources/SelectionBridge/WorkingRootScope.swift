@@ -11,14 +11,17 @@ import Foundation
 /// Working Root is one the caller could already read with its own tools, so
 /// disclosing it reveals nothing new. An unscoped or unmatched caller must
 /// get nothing, not a degraded "best effort" answer — see `apply(to:workingRoot:)`.
-enum WorkingRootScope {
+public enum WorkingRootScope {
     /// A single Snapshot's Source is capped this far before "visible
     /// truncation" (a trailing marker in the Source text itself) kicks in.
-    static let maxSnapshotBytes = 32_000
+    /// Public so the conformance harness (issue #9) can size its own
+    /// truncation-cap test case against the real limit rather than a
+    /// duplicated guess.
+    public static let maxSnapshotBytes = 32_000
     /// Total across every block in one `read()` response. Most-recent-first
     /// ordering (SelectionStore.read() already guarantees this) means
     /// exceeding this drops the least-recent Selections, not arbitrary ones.
-    static let maxTotalBytes = 128_000
+    public static let maxTotalBytes = 128_000
 
     /// `snapshots` must already be ordered most-recently-selected first.
     /// Returns `[]` outright for a missing/empty Working Root — there is no

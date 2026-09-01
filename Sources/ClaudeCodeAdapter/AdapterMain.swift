@@ -1,4 +1,5 @@
 import BridgeClient
+import ContextureKit
 import Foundation
 
 // `@main` rather than a `main.swift` script — see ContextureApp/AppMain.swift
@@ -9,7 +10,13 @@ import Foundation
 enum ClaudeCodeAdapterMain {
     static func main() {
         let stdinData = FileHandle.standardInput.readDataToEndOfFile()
-        let client = BridgeClient()
+        // Overridable so the shared black-box conformance harness (issue
+        // #9) can point a real, unmodified copy of this executable at a
+        // throwaway Bridge instead of the real per-user one. Absent in
+        // every real installation, where the default applies as always.
+        let socketPath = ProcessInfo.processInfo.environment["CONTEXTURE_BRIDGE_SOCKET"]
+            ?? BridgeLocation.defaultSocketPath()
+        let client = BridgeClient(socketPath: socketPath)
 
         let output = ClaudeCodeAdapterCore.handle(
             stdinJSON: stdinData,

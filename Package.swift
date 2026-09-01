@@ -34,6 +34,10 @@ let package = Package(
             name: "ClaudeCodeAdapter",
             dependencies: ["ContextureKit", "BridgeClient"]
         ),
+        .target(
+            name: "ConformanceHarness",
+            dependencies: ["ContextureKit", "SelectionBridge"]
+        ),
         .testTarget(
             name: "ContextureKitTests",
             dependencies: ["ContextureKit"]
@@ -52,7 +56,7 @@ let package = Package(
         ),
         .testTarget(
             name: "ClaudeCodeAdapterTests",
-            dependencies: ["ClaudeCodeAdapter", "BridgeClient", "ContextureKit"]
+            dependencies: ["ClaudeCodeAdapter", "BridgeClient", "ContextureKit", "ConformanceHarness"]
         )
     ]
 )

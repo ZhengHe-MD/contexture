@@ -1,0 +1,37 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  swift:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: swift build
+        run: swift build
+      - name: swift test
+        # Includes the shared black-box conformance harness (issue #9),
+        # which launches the compiled ClaudeCodeAdapter as a real
+        # subprocess against a throwaway Bridge — no mocking of either
+        # side of that wire protocol.
+        run: swift test
+
+  editor-web:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: editor-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: fail if the built editor bundle differs from what's committed
+        working-directory: .
+        run: git diff --exit-code -- Sources/ContextureApp/Resources/editor
