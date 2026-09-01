@@ -64,6 +64,14 @@ public final class SelectionBridgeServer {
         notifyArmedChangeObservers()
     }
 
+    /// Every Armed Snapshot whose Document lies under `workingRoot`,
+    /// relative-pathed and capped for disclosure (docs/adr/0004 — see
+    /// `WorkingRootScope`). A missing/unmatched Working Root gets `[]`, not
+    /// a fallback to everything Armed.
+    public func read(workingRoot: String?) -> [SelectionSnapshot] {
+        WorkingRootScope.apply(to: store.read(), workingRoot: workingRoot)
+    }
+
     /// Whether `documentID` currently has an Armed, non-empty Snapshot —
     /// the same predicate `read()` applies (docs/architecture/
     /// selection-bridge.md "Injection decision"), scoped to one Document.
@@ -116,12 +124,11 @@ public final class SelectionBridgeServer {
             return .json(200, BridgePublishResponse(version: version))
 
         case ("POST", "/read"):
-            // Working Root scoping arrives with issue #8; every caller
-            // sees every Armed snapshot until then.
-            guard (try? JSONDecoder().decode(BridgeReadRequest.self, from: request.body)) != nil else {
+            guard let decoded = try? JSONDecoder().decode(BridgeReadRequest.self, from: request.body) else {
                 return .empty(400)
             }
-            return .json(200, BridgeReadResponse(snapshots: store.read()))
+            let scoped = WorkingRootScope.apply(to: store.read(), workingRoot: decoded.workingRoot)
+            return .json(200, BridgeReadResponse(snapshots: scoped))
 
         case ("POST", "/ack"):
             guard let decoded = try? JSONDecoder().decode(BridgeAckRequest.self, from: request.body) else {

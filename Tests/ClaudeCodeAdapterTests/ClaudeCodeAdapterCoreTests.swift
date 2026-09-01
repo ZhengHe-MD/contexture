@@ -12,6 +12,7 @@ import Testing
             sourceBytes: data,
             format: .markdown,
             relativePath: "notes.md",
+            absolutePath: "/tmp/notes.md",
             revision: RevisionHash(contentBytes: data),
             byteRange: SourceByteRange(lowerBound: 0, upperBound: data.count),
             sharingMode: .nextPrompt,

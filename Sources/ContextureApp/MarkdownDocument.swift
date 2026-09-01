@@ -33,12 +33,14 @@ final class MarkdownDocument: NSDocument {
 
     override class var autosavesInPlace: Bool { true }
 
-    /// Not yet the true Working-Root-relative path the architecture doc
-    /// calls for — that needs a caller-supplied Working Root to compute
-    /// against, which arrives with issue #8's scoping. Using just the
-    /// filename here is a safe, deliberately conservative placeholder: it
-    /// never leaks an absolute path (ADR-0004), the one hard invariant
-    /// that must hold regardless.
+    /// A publish-time placeholder, not the real Working-Root-relative path:
+    /// that needs a caller-supplied Working Root, which only exists at read
+    /// time (issue #8 — see `WorkingRootScope`, which overwrites this
+    /// field on every `read()`). Kept as just the filename here rather than
+    /// anything richer so that a Snapshot read without going through that
+    /// scoping (there is no such path today, but nothing enforces that
+    /// statically) still never leaks an absolute path — ADR-0004's one hard
+    /// invariant that must hold regardless.
     private var relativePathForSharing: String {
         fileURL?.lastPathComponent ?? displayName ?? "Untitled"
     }
@@ -84,6 +86,7 @@ final class MarkdownDocument: NSDocument {
                 sourceBytes: Data(change.text.utf8),
                 format: .markdown,
                 relativePath: relativePathForSharing,
+                absolutePath: fileURL.path,
                 revision: diskRevision,
                 byteRange: SourceByteRange(lowerBound: change.byteStart, upperBound: change.byteEnd),
                 displayLine: change.line,

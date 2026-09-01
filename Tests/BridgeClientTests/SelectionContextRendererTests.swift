@@ -11,6 +11,7 @@ import Testing
             sourceBytes: data,
             format: .markdown,
             relativePath: relativePath,
+            absolutePath: "/tmp/\(relativePath)",
             revision: RevisionHash(contentBytes: data),
             byteRange: SourceByteRange(lowerBound: 0, upperBound: data.count),
             sharingMode: .nextPrompt,
