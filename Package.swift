@@ -11,7 +11,8 @@ let package = Package(
         .library(name: "SelectionBridge", targets: ["SelectionBridge"]),
         .library(name: "BridgeClient", targets: ["BridgeClient"]),
         .executable(name: "ContextureApp", targets: ["ContextureApp"]),
-        .executable(name: "ClaudeCodeAdapter", targets: ["ClaudeCodeAdapter"])
+        .executable(name: "ClaudeCodeAdapter", targets: ["ClaudeCodeAdapter"]),
+        .executable(name: "CodexAdapter", targets: ["CodexAdapter"])
     ],
     targets: [
         .target(name: "ContextureKit"),
@@ -32,6 +33,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "ClaudeCodeAdapter",
+            dependencies: ["ContextureKit", "BridgeClient"]
+        ),
+        .executableTarget(
+            name: "CodexAdapter",
             dependencies: ["ContextureKit", "BridgeClient"]
         ),
         .target(
@@ -57,6 +62,10 @@ let package = Package(
         .testTarget(
             name: "ClaudeCodeAdapterTests",
             dependencies: ["ClaudeCodeAdapter", "BridgeClient", "ContextureKit", "ConformanceHarness"]
+        ),
+        .testTarget(
+            name: "CodexAdapterTests",
+            dependencies: ["CodexAdapter", "BridgeClient", "ContextureKit", "ConformanceHarness"]
         )
     ]
 )
