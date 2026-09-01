@@ -68546,6 +68546,49 @@
   _defineProperty(MarkdownIt, "StateInline", StateInline);
   var MarkdownItCallable = callable(MarkdownIt);
 
+  // src/blockMap.js
+  function stampSourceRanges(md) {
+    md.core.ruler.push("contexture_stamp_source_ranges", (state) => {
+      for (const token of state.tokens) {
+        if (token.block && token.map) {
+          token.attrSet("data-src", formatBlockRange({ start: token.map[0], end: token.map[1] }));
+        }
+      }
+    });
+  }
+  function formatBlockRange(range) {
+    return `${range.start}-${range.end}`;
+  }
+  function parseBlockRange(value) {
+    if (!value) return null;
+    const match2 = /^(\d+)-(\d+)$/.exec(value);
+    if (!match2) return null;
+    return { start: Number(match2[1]), end: Number(match2[2]) };
+  }
+  function smallestCoveringNodes(node, range) {
+    const children = node.children ? Array.from(node.children) : [];
+    const containing = children.filter((child) => child.start <= range.start && range.end <= child.end);
+    if (containing.length === 1) {
+      return smallestCoveringNodes(containing[0], range);
+    }
+    const intersecting = children.filter((child) => child.start < range.end && range.start < child.end);
+    if (intersecting.length === 0) {
+      return [node];
+    }
+    return intersecting;
+  }
+  function mergeNodeRanges(nodes) {
+    const starts = nodes.map((node) => node.start);
+    const ends = nodes.map((node) => node.end);
+    return { start: Math.min(...starts), end: Math.max(...ends) };
+  }
+  function cmLinesForBlockRange(range) {
+    return { fromLine: range.start + 1, toLine: range.end };
+  }
+  function blockRangeForCmLines(fromLine, toLine) {
+    return { start: fromLine - 1, end: toLine };
+  }
+
   // src/main.js
   function postToNative(message) {
     if (window.webkit?.messageHandlers?.contexture) {
@@ -68553,6 +68596,7 @@
     }
   }
   var markdownRenderer = new MarkdownItCallable({ html: true, linkify: true });
+  markdownRenderer.use(stampSourceRanges);
   var suppressChangeNotification = false;
   var byteLength = (text6) => new TextEncoder().encode(text6).length;
   var PREVIEW_DEBOUNCE_MS = 150;
@@ -68599,6 +68643,9 @@
                 line: line.number,
                 column: range.head - line.from + 1
               });
+              applyPreviewHighlightForSelection(range);
+            } else {
+              clearPreviewHighlight();
             }
           }
         })
@@ -68633,10 +68680,124 @@
         previewFrame.contentWindow?.scrollTo(0, scrollY);
       } catch {
       }
+      const range = view.state.selection.main;
+      if (!range.empty) {
+        applyPreviewHighlightForSelection(range);
+      }
     };
     previewFrame.addEventListener("load", restoreScroll);
     previewFrame.srcdoc = html2;
   };
+  var PREVIEW_HIGHLIGHT_CLASS = "contexture-selected";
+  var highlightedPreviewElements = [];
+  function dataSrcChildren(element2) {
+    return Array.from(element2.children).filter((child) => child.hasAttribute("data-src"));
+  }
+  function toBlockNode(element2) {
+    const range = parseBlockRange(element2.getAttribute("data-src"));
+    return {
+      start: range.start,
+      end: range.end,
+      get children() {
+        return dataSrcChildren(element2).map(toBlockNode);
+      },
+      element: element2
+    };
+  }
+  function previewTreeRoot(previewDocument) {
+    return {
+      start: -Infinity,
+      end: Infinity,
+      children: dataSrcChildren(previewDocument.body).map(toBlockNode)
+    };
+  }
+  function clearPreviewHighlight() {
+    for (const element2 of highlightedPreviewElements) {
+      element2.classList.remove(PREVIEW_HIGHLIGHT_CLASS);
+    }
+    highlightedPreviewElements = [];
+  }
+  function applyPreviewHighlightForSelection(range) {
+    const previewDocument = previewFrame.contentDocument;
+    if (!previewDocument || !previewDocument.body) return;
+    clearPreviewHighlight();
+    const fromLine = view.state.doc.lineAt(range.from).number;
+    const toLine = view.state.doc.lineAt(range.to).number;
+    const target = blockRangeForCmLines(fromLine, toLine);
+    const covering = smallestCoveringNodes(previewTreeRoot(previewDocument), target);
+    for (const node of covering) {
+      if (node.element) {
+        node.element.classList.add(PREVIEW_HIGHLIGHT_CLASS);
+        highlightedPreviewElements.push(node.element);
+      }
+    }
+  }
+  function nearestDataSrcElement(node, previewDocument) {
+    let element2 = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    while (element2 && element2 !== previewDocument.body && !element2.hasAttribute("data-src")) {
+      element2 = element2.parentElement;
+    }
+    return element2 && element2.hasAttribute("data-src") ? element2 : null;
+  }
+  function handlePreviewSelectionChanged(selection) {
+    const previewDocument = previewFrame.contentDocument;
+    if (!previewDocument) return;
+    const domRange = selection.getRangeAt(0);
+    const startElement = nearestDataSrcElement(domRange.startContainer, previewDocument);
+    const endElement = nearestDataSrcElement(domRange.endContainer, previewDocument);
+    if (!startElement || !endElement) return;
+    const startRange = parseBlockRange(startElement.getAttribute("data-src"));
+    const endRange = parseBlockRange(endElement.getAttribute("data-src"));
+    if (!startRange || !endRange) return;
+    const touched = {
+      start: Math.min(startRange.start, endRange.start),
+      end: Math.max(startRange.end, endRange.end)
+    };
+    const covering = smallestCoveringNodes(previewTreeRoot(previewDocument), touched);
+    if (covering.length === 0) return;
+    const snapped = mergeNodeRanges(covering);
+    if (!Number.isFinite(snapped.start) || !Number.isFinite(snapped.end)) return;
+    const { fromLine, toLine } = cmLinesForBlockRange(snapped);
+    const lineCount = view.state.doc.lines;
+    const clampedFromLine = Math.min(Math.max(fromLine, 1), lineCount);
+    const clampedToLine = Math.min(Math.max(toLine, 1), lineCount);
+    const from3 = view.state.doc.line(clampedFromLine).from;
+    const to = view.state.doc.line(clampedToLine).to;
+    if (from3 >= to) return;
+    view.dispatch({ selection: EditorSelection.range(from3, to), scrollIntoView: true });
+    try {
+      selection.removeAllRanges();
+    } catch {
+    }
+    lastPreviewSelectionPoint = null;
+  }
+  var PREVIEW_SELECTION_POLL_MS = 200;
+  var lastPreviewSelectionPoint = null;
+  function previewSelectionPollTick() {
+    let selection;
+    try {
+      selection = previewFrame.contentWindow ? previewFrame.contentWindow.getSelection() : null;
+    } catch {
+      return;
+    }
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+      lastPreviewSelectionPoint = null;
+      return;
+    }
+    const domRange = selection.getRangeAt(0);
+    const current = {
+      startContainer: domRange.startContainer,
+      startOffset: domRange.startOffset,
+      endContainer: domRange.endContainer,
+      endOffset: domRange.endOffset
+    };
+    if (lastPreviewSelectionPoint && lastPreviewSelectionPoint.startContainer === current.startContainer && lastPreviewSelectionPoint.startOffset === current.startOffset && lastPreviewSelectionPoint.endContainer === current.endContainer && lastPreviewSelectionPoint.endOffset === current.endOffset) {
+      return;
+    }
+    lastPreviewSelectionPoint = current;
+    handlePreviewSelectionChanged(selection);
+  }
+  setInterval(previewSelectionPollTick, PREVIEW_SELECTION_POLL_MS);
   postToNative({ type: "ready" });
 })();
 /*! Bundled license information:
