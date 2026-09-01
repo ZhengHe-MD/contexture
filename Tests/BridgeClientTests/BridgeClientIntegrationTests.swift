@@ -80,6 +80,29 @@ import Testing
         client.ack(snapshotIDs: [SnapshotID()], consumptionID: "conv-1")
     }
 
+    @Test func ackOverTheRealSocketFiresTheServersArmedChangeObserver() throws {
+        // ack is only ever invoked over the real socket by an Adapter
+        // process — the app's in-process passthroughs never call it — so
+        // this is the one Armed-change-observer path that must be proven
+        // through the real HTTP-over-UDS transport rather than a direct
+        // SelectionBridgeServer method call.
+        let path = temporarySocketPath()
+        let server = SelectionBridgeServer(socketPath: path)
+        try server.start()
+        defer { server.stop() }
+
+        let snap = snapshot()
+        server.publish(snap)
+
+        var fireCount = 0
+        server.addArmedChangeObserver { fireCount += 1 }
+
+        let client = BridgeClient(socketPath: path, timeout: 2)
+        client.ack(snapshotIDs: [snap.id], consumptionID: "conv-1")
+
+        #expect(fireCount == 1)
+    }
+
     @Test func severalArmedDocumentsAllArriveOrderedMostRecentFirst() throws {
         let path = temporarySocketPath()
         let server = SelectionBridgeServer(socketPath: path)
