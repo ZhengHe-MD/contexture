@@ -19,6 +19,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 cp "$BUILD_DIR/ContextureApp" "$APP/Contents/MacOS/Contexture"
 cp "AppPackaging/Info.plist" "$APP/Contents/Info.plist"
+cp "AppPackaging/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
 RESOURCE_BUNDLE="$BUILD_DIR/Contexture_ContextureApp.bundle"
 if [ -d "$RESOURCE_BUNDLE" ]; then

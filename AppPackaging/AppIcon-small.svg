@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Contexture app icon for 16–32 pt sizes</title>
+  <defs>
+    <clipPath id="squircle-small">
+      <rect width="1024" height="1024" rx="229" ry="229"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#squircle-small)">
+    <rect width="1024" height="1024" fill="#8fa073"/>
+    <g transform="scale(10.24)">
+      <rect x="12" y="16" width="76" height="68" rx="15" fill="#f5ead8"/>
+      <path d="M12 30v-4a14 14 0 0 1 14-14h48a14 14 0 0 1 14 14v4z" fill="#ebddc5"/>
+      <rect x="22" y="40" width="44" height="7" rx="3.5" fill="#c0b6a5"/>
+      <rect x="20" y="55" width="54" height="13" rx="6.5" fill="#c67139"/>
+    </g>
+  </g>
+</svg>
