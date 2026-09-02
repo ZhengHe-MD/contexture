@@ -3,20 +3,50 @@ import AppKit
 /// One window per open Document, standard macOS chrome and traffic-light
 /// placement (docs/product.md "Writing experience").
 final class EditorWindowController: NSWindowController {
+    static let minimumContentSize = NSSize(width: 480, height: 320)
+
+    private static let fallbackContentSize = NSSize(width: 1200, height: 800)
+    private static let initialScreenFraction: CGFloat = 2.0 / 3.0
+    private static let frameAutosaveName = "ContextureEditorWindow.v2"
+
     private let editorViewController = EditorViewController()
 
     convenience init() {
+        let contentSize = Self.defaultContentSize(
+            for: NSScreen.main?.visibleFrame.size
+        )
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 900, height: 700),
+            contentRect: NSRect(origin: .zero, size: contentSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.setFrameAutosaveName("ContextureEditorWindow")
-        window.contentMinSize = NSSize(width: 480, height: 320)
+        // The versioned name gives existing installs the larger default once;
+        // after that, AppKit continues to remember the size the writer chose.
+        window.setFrameAutosaveName(Self.frameAutosaveName)
+        window.contentMinSize = Self.minimumContentSize
         window.center()
         self.init(window: window)
         window.contentViewController = editorViewController
+    }
+
+    /// Use the available desktop rather than a fixed pixel size so the first
+    /// window feels equally substantial on a laptop and an external display.
+    static func defaultContentSize(for visibleScreenSize: NSSize?) -> NSSize {
+        guard let visibleScreenSize else {
+            return fallbackContentSize
+        }
+
+        return NSSize(
+            width: max(
+                minimumContentSize.width,
+                (visibleScreenSize.width * initialScreenFraction).rounded(.up)
+            ),
+            height: max(
+                minimumContentSize.height,
+                (visibleScreenSize.height * initialScreenFraction).rounded(.up)
+            )
+        )
     }
 
     /// `windowDidLoad()` is only invoked automatically for a NIB-loaded
