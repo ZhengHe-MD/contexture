@@ -165,7 +165,8 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
         // do. WKWebView can use either that form or the inherited file URL
         // for a srcdoc link, so retain URL.fragment as the primary parser and
         // fall back to the literal suffix after `#` for the older behavior.
-        let fragment = url.fragment ?? url.absoluteString
+        let absoluteString = url.absoluteString.removingPercentEncoding ?? url.absoluteString
+        let fragment = url.fragment ?? absoluteString
             .split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
             .dropFirst()
             .first
