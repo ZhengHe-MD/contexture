@@ -18,6 +18,10 @@ const buildOptions = {
   outfile: path.join(outdir, "bundle.js"),
   format: "iife",
   target: "safari17",
+  // Mermaid's full renderer is intentionally bundled for offline use. Minify
+  // the generated resource so that package internals do not add ~10 MB of
+  // debug-only source and whitespace to every app build.
+  minify: true,
   sourcemap: false,
   logLevel: "info",
 };

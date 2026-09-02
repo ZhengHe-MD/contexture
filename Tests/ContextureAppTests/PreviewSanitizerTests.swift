@@ -125,6 +125,12 @@ import Testing
         #expect(sanitized.contains("src=\"data:image/png;base64,AAAA\""))
     }
 
+    @Test func doesNotStripInertMermaidSVGImageSources() {
+        let html = "<img src=\"data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=\" alt=\"Mermaid diagram\">"
+        let sanitized = PreviewSanitizer.sanitize(html)
+        #expect(sanitized == html)
+    }
+
     @Test func removesPingAttribute() {
         let html = "<a href=\"/local\" ping=\"https://evil.example.com/beacon\">click</a>"
         let sanitized = PreviewSanitizer.sanitize(html)

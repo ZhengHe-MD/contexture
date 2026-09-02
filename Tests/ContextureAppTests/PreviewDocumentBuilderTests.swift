@@ -51,6 +51,20 @@ import Testing
         #expect(document.contains("data:image/png;base64,AAAA"))
     }
 
+    @Test func preservesInertMermaidImagesAndTheirAtomicSourceRange() {
+        let bodyHTML = """
+        <figure class="contexture-mermaid" data-src="2-6">
+        <img src="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=" alt="A to B">
+        </figure>
+        """
+        let document = PreviewDocumentBuilder.buildDocument(bodyHTML: bodyHTML)
+        #expect(document.contains("class=\"contexture-mermaid\""))
+        #expect(document.contains("data-src=\"2-6\""))
+        #expect(document.contains("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="))
+        #expect(document.contains("alt=\"A to B\""))
+        #expect(document.contains(".contexture-mermaid img"))
+    }
+
     @Test func embedsTheSynchronizedSelectionHighlightStyle() {
         // issue #5: the outer trusted page's own script (never anything
         // running inside this sandboxed document) toggles this class on the

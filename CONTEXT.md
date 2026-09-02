@@ -19,6 +19,16 @@ _Avoid_: Raw text, input
 The rendered representation of a Document's Source.
 _Avoid_: Output, render, WYSIWYG
 
+**Diagram**:
+A static visual in the Preview derived from a Mermaid Block. It is one atomic
+Preview node rather than an executable surface.
+_Avoid_: Widget, live diagram, canvas
+
+**Mermaid Block**:
+A fenced Source block labelled `mermaid` whose contents appear as a static
+Diagram in the Preview.
+_Avoid_: Mermaid Document, executable diagram
+
 **Selection**:
 The non-empty Source range currently selected by the writer in a Document. A
 Selection is always a Source range, whichever pane the writer acted in.

@@ -1,0 +1,3 @@
+# Generated from editor-web. Mermaid contains whitespace-significant template
+# literals whose source lines legitimately end in spaces.
+Sources/ContextureApp/Resources/editor/bundle.js -whitespace linguist-generated

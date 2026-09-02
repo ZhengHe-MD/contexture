@@ -13,9 +13,12 @@ The writer remains free to start or continue conversations in the Agent Host
 they already use. Contexture supplies writing context; it does not replace the
 agent's conversation interface.
 
-Markdown is the first supported format. HTML, SVG, and Mermaid are the natural
-next ones. Formats with nothing to render — JSON, source code — are out of
-scope; editors already own them.
+Markdown is the first supported Document format. A fenced Source block whose
+first info-string token is `mermaid` renders as a static Diagram inside that
+Markdown Preview; this does not make standalone Mermaid files a second
+Document format. HTML, SVG, and standalone Mermaid are the natural next ones.
+Formats with nothing to render — JSON, source code — are out of scope; editors
+already own them.
 
 ## Audience
 
@@ -73,6 +76,11 @@ persistent count of Armed snapshots and offers a single-key clear.
   horizontal viewport.
 - Show the Selection in both panes simultaneously. A Preview selection snaps
   outward to complete nodes so that published bytes stay parseable.
+- Render Mermaid Blocks as atomic Preview nodes. A Preview Selection touching
+  a Diagram snaps to the whole fenced block; an ordinary click does not Arm it.
+- Follow macOS light/dark appearance when rendering a Diagram. Safe visual
+  Mermaid configuration may override presentation, but never Contexture's
+  security or resource limits.
 - Keep opening, editing, previewing, saving, closing, and reopening ordinary
   files useful without any agent installation.
 - Keep agent integration quiet when it is unused or unavailable.
@@ -92,6 +100,10 @@ persistent count of Armed snapshots and offers a single-key clear.
   make remote loads (see ADR-0002 for the isolation mechanism — Source and
   Preview share one web view, so this holds even though that view's
   JavaScript is not literally disabled overall).
+- Render Mermaid Source only with the bundled, pinned renderer in the trusted
+  outer editor page. Insert only a sanitized, inert SVG data image into the
+  script-free Preview; Diagram Source may not enable callbacks, links, remote
+  resources, or weaker Mermaid security settings.
 
 ## Document authority
 
@@ -113,6 +125,8 @@ The first product should include:
 
 - a native macOS editor shell around a CodeMirror 6 editor and Preview;
 - Source plus rendered Preview with synchronized Selection;
+- static rendering of lowercase `mermaid` fenced blocks, with an accessible
+  name and a local inline error for invalid Diagram Source;
 - local-file opening, safe autosave, and flush-on-publish;
 - Selection Snapshot capture, Arming, and visible sharing state;
 - the local Selection Bridge over a Unix domain socket;
@@ -140,7 +154,8 @@ Multi-format support is preserved by exactly three cheap commitments: the
 glossary does not say Markdown, the envelope carries a format tag from the
 first release, and document plumbing is not welded to a single file type.
 
-No format abstraction is built until a second format exists. A plugin system, a
+No format abstraction is built until a second Document format exists. Mermaid
+Blocks are a Markdown Preview feature, not a second format. A plugin system, a
 format registry, or a provider protocol with one implementation is an
 abstraction designed against a single example, and the second example is what
 teaches where the seam belongs.
@@ -173,7 +188,7 @@ explicit request.
 - When a Selection crosses blocks, should Contexture offer an explicit
   expansion to the containing heading section?
 - What is the retention policy for adapter diagnostics?
-- Which format follows Markdown, and does it arrive before or after the first
-  public release?
+- Which standalone Document format follows Markdown, and does it arrive before
+  or after the first public release?
 - Does the CodeMirror editing surface hold up under a week of real writing, or
   does the loss of macOS text replacement force a native editor pane?

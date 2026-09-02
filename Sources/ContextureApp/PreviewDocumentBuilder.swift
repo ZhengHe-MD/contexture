@@ -59,6 +59,9 @@ enum PreviewDocumentBuilder {
     pre { overflow-x: auto; padding: 8px; background: rgba(128, 128, 128, 0.12); border-radius: 4px; }
     code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9em; }
     pre code { font-size: 1em; }
+    .contexture-mermaid { margin: 1em 0; overflow-x: auto; text-align: center; }
+    .contexture-mermaid img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+    .contexture-mermaid-error { border-left: 3px solid #c33; color: #c33; white-space: pre-wrap; }
     .contexture-selected { background: rgba(255, 190, 40, 0.35); outline: 1px solid rgba(200, 140, 0, 0.6); outline-offset: 1px; border-radius: 3px; }
     """
 
