@@ -70,6 +70,8 @@ persistent count of Armed snapshots and offers a single-key clear.
 ## Writing experience
 
 - Use standard macOS window chrome and traffic-light placement.
+- Give the first editor window at least two-thirds of the visible display area,
+  then remember the size the writer chooses.
 - Keep the Source and Preview as a full-height split view; the divider runs
   continuously from the top of the content area to the bottom.
 - Keep leading YAML front matter in the Source but omit it from the Preview.
