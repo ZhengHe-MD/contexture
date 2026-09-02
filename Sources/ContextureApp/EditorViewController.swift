@@ -159,7 +159,18 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
 
     static func diagramIdentifier(from url: URL?) -> String? {
         let prefix = "contexture-diagram-"
-        guard let fragment = url?.fragment, fragment.hasPrefix(prefix) else { return nil }
+        guard let url else { return nil }
+        // Foundation on macOS 14 does not expose the fragment of an opaque
+        // `about:srcdoc#...` URL through URL.fragment, while newer releases
+        // do. WKWebView can use either that form or the inherited file URL
+        // for a srcdoc link, so retain URL.fragment as the primary parser and
+        // fall back to the literal suffix after `#` for the older behavior.
+        let fragment = url.fragment ?? url.absoluteString
+            .split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
+            .dropFirst()
+            .first
+            .map(String.init)
+        guard let fragment, fragment.hasPrefix(prefix) else { return nil }
         let identifier = String(fragment.dropFirst(prefix.count))
         guard !identifier.isEmpty,
               identifier.allSatisfy({ $0 >= "0" && $0 <= "9" }) else { return nil }
