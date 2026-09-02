@@ -88,7 +88,10 @@ persistent count of Armed snapshots and offers a single-key clear.
   instructions.
 - Do not log Selection contents by default.
 - Bind local services to a user-only Unix domain socket at mode `0600`.
-- Render the Preview with JavaScript disabled and remote loads blocked.
+- Render the Preview so its Document content cannot execute scripts or
+  make remote loads (see ADR-0002 for the isolation mechanism — Source and
+  Preview share one web view, so this holds even though that view's
+  JavaScript is not literally disabled overall).
 
 ## Document authority
 
@@ -114,7 +117,10 @@ The first product should include:
 - Selection Snapshot capture, Arming, and visible sharing state;
 - the local Selection Bridge over a Unix domain socket;
 - deterministic adapters for Codex, Claude Code, and Antigravity;
-- the shared black-box test harness, built before the adapters;
+- the shared black-box test harness, built after the first adapter and
+  before the second and third — a conformance target has nothing to test
+  against until one real adapter exists, and earns its keep precisely where
+  a second and third are about to land together;
 - installation diagnostics and a clean uninstall path for every adapter.
 
 The first product should not include:

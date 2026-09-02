@@ -1,0 +1,58 @@
+:root {
+  color-scheme: light dark;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: transparent;
+}
+
+#root {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* Source and Preview sit in a full-height split with a divider that runs
+   continuously from the top of the content area to the bottom (docs/product.md
+   "Writing experience"; ADR-0002 renders that divider as CSS flex layout
+   inside this one web view rather than an NSSplitView). */
+#editor,
+#preview {
+  flex: 1 1 50%;
+  min-width: 0;
+  height: 100%;
+}
+
+#editor {
+  overflow: hidden;
+}
+
+#preview {
+  border: 0;
+  background: transparent;
+}
+
+#divider {
+  flex: 0 0 1px;
+  align-self: stretch;
+  background: rgba(128, 128, 128, 0.35);
+}
+
+.cm-editor {
+  height: 100%;
+  font-family: -apple-system, ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 14px;
+}
+
+.cm-scroller {
+  overflow: auto;
+  line-height: 1.5;
+}
+
+.cm-content {
+  padding: 12px 16px;
+}
