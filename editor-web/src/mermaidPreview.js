@@ -25,6 +25,15 @@ export function sanitizeCSSReferences(css) {
     });
 }
 
+// Mermaid repairs HTML <br> elements before running DOMPurify, but DOMPurify
+// serializes XHTML line breaks back as HTML-style `<br>`. A strict SVG/XML
+// parse then sees an unclosed element and rejects an otherwise valid Diagram.
+// Repeat that narrowly-scoped normalization at the boundary where Contexture
+// takes ownership of Mermaid's returned string.
+export function normalizeMermaidSVGForXML(svg) {
+  return String(svg).replace(/<br\s*>/gi, "<br/>");
+}
+
 export function svgDataURL(svg) {
   const bytes = new TextEncoder().encode(svg);
   const chunks = [];
@@ -57,12 +66,34 @@ function replaceWithHTML(token, html) {
   token.content = `${html}\n`;
 }
 
-function renderedDiagramHTML(dataSrc, diagram) {
+function renderedDiagramHTML(dataSrc, diagram, diagramID) {
+  const width = Number(diagram.intrinsicWidth);
+  const height = Number(diagram.intrinsicHeight);
+  const sizeAttributes = Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0
+    ? ` width="${width}" height="${height}" data-intrinsic-width="${width}" data-intrinsic-height="${height}" style="width:${width}px;height:${height}px"`
+    : "";
   return [
-    `<figure class="contexture-mermaid" data-src="${escapeHTML(dataSrc)}">`,
-    `<img src="${escapeHTML(diagram.dataURL)}" alt="${escapeHTML(diagram.accessibleName || "Mermaid diagram")}">`,
+    `<figure class="contexture-mermaid" data-src="${escapeHTML(dataSrc)}" data-diagram-id="${diagramID}">`,
+    '<a class="contexture-mermaid__open">',
+    `<img src="${escapeHTML(diagram.dataURL)}" alt="${escapeHTML(diagram.accessibleName || "Mermaid diagram")}"${sizeAttributes}>`,
+    "</a>",
     "</figure>",
   ].join("");
+}
+
+/// Whether the inline image is currently smaller than the Diagram's natural
+/// rendered size. Kept pure so the DOM-facing interaction code in main.js
+/// does not have to own the sizing policy as well as event wiring.
+export function isDiagramSizeLimited(
+  intrinsicWidth,
+  intrinsicHeight,
+  renderedWidth,
+  renderedHeight,
+  tolerance = 1
+) {
+  const values = [intrinsicWidth, intrinsicHeight, renderedWidth, renderedHeight];
+  if (!values.every((value) => Number.isFinite(value) && value > 0)) return false;
+  return intrinsicWidth - renderedWidth > tolerance || intrinsicHeight - renderedHeight > tolerance;
 }
 
 function diagramErrorHTML(dataSrc, error) {
@@ -88,7 +119,7 @@ export async function renderMarkdownPreview(markdownRenderer, source, renderDiag
       Promise.resolve()
         .then(() => renderDiagram(token.content, currentIndex))
         .then(
-          (diagram) => replaceWithHTML(token, renderedDiagramHTML(dataSrc, diagram)),
+          (diagram) => replaceWithHTML(token, renderedDiagramHTML(dataSrc, diagram, currentIndex)),
           (error) => replaceWithHTML(token, diagramErrorHTML(dataSrc, error))
         )
     );

@@ -45,4 +45,14 @@ import Testing
         #expect(delegate.titleChangeCount == 1)
         #expect(delegate.lastTitle == nil)
     }
+
+    @Test func recognizesOnlyNumericDiagramViewerFragmentIdentifiers() {
+        #expect(EditorViewController.diagramIdentifier(from: URL(string: "about:srcdoc#contexture-diagram-12")) == "12")
+        #expect(EditorViewController.diagramIdentifier(from: URL(string: "file:///editor/index.html#contexture-diagram-0")) == "0")
+        #expect(EditorViewController.diagramIdentifier(from: URL(string: "file:///editor/index.html#contexture-diagram-")) == nil)
+        #expect(EditorViewController.diagramIdentifier(from: URL(string: "file:///editor/index.html#contexture-diagram-secret")) == nil)
+        #expect(EditorViewController.diagramIdentifier(from: URL(string: "file:///editor/index.html#ordinary-heading")) == nil)
+        #expect(EditorViewController.diagramIdentifier(from: nil) == nil)
+    }
+
 }

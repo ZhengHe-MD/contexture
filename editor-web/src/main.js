@@ -13,7 +13,9 @@ import {
   blockRangeForCmLines,
 } from "./blockMap.js";
 import {
+  isDiagramSizeLimited,
   isLocalSVGReference,
+  normalizeMermaidSVGForXML,
   renderMarkdownPreview,
   sanitizeCSSReferences,
   svgDataURL,
@@ -84,7 +86,10 @@ function initializeMermaidForAppearance(theme) {
 }
 
 function sanitizedMermaidSVG(svg) {
-  const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
+  const parsed = new DOMParser().parseFromString(
+    normalizeMermaidSVGForXML(svg),
+    "image/svg+xml"
+  );
   if (parsed.querySelector("parsererror") || parsed.documentElement.localName !== "svg") {
     throw new Error("Mermaid produced invalid SVG");
   }
@@ -133,9 +138,24 @@ function sanitizedMermaidSVG(svg) {
   const description = directChild("desc")?.textContent?.trim() || "";
   const accessibleName = [title, description].filter(Boolean).join(" — ") || "Mermaid diagram";
 
+  // Mermaid's SVG root commonly uses width="100%", which gives an <img>
+  // no useful intrinsic CSS width. The viewBox is the renderer's actual
+  // content-sized coordinate space, so carry those dimensions into the
+  // inert image attributes. CSS can then preserve small Diagrams at their
+  // natural size and shrink only the ones that hit the inline limits.
+  const viewBox = root.getAttribute("viewBox")?.trim().split(/[\s,]+/).map(Number) || [];
+  const intrinsicWidth = viewBox.length === 4 && Number.isFinite(viewBox[2]) && viewBox[2] > 0
+    ? viewBox[2]
+    : null;
+  const intrinsicHeight = viewBox.length === 4 && Number.isFinite(viewBox[3]) && viewBox[3] > 0
+    ? viewBox[3]
+    : null;
+
   return {
     svg: new XMLSerializer().serializeToString(root),
     accessibleName,
+    intrinsicWidth,
+    intrinsicHeight,
   };
 }
 
@@ -146,6 +166,8 @@ async function renderMermaidDiagram(definition, previewID, diagramIndex) {
   return {
     dataURL: svgDataURL(sanitized.svg),
     accessibleName: sanitized.accessibleName,
+    intrinsicWidth: sanitized.intrinsicWidth,
+    intrinsicHeight: sanitized.intrinsicHeight,
   };
 }
 
@@ -294,8 +316,169 @@ window.__contexture_getContent = function getContent() {
 // to keep scroll position sensible without needing anything to execute
 // inside the Preview document itself.
 const previewFrame = document.getElementById("preview");
+const diagramViewer = document.getElementById("diagram-viewer");
+const diagramViewerTitle = document.getElementById("diagram-viewer-title");
+const diagramViewerViewport = document.getElementById("diagram-viewer-viewport");
+const diagramViewerImage = document.getElementById("diagram-viewer-image");
+const diagramViewerZoom = document.getElementById("diagram-viewer-zoom");
+const diagramViewerZoomOut = document.getElementById("diagram-viewer-zoom-out");
+const diagramViewerFit = document.getElementById("diagram-viewer-fit");
+const diagramViewerZoomIn = document.getElementById("diagram-viewer-zoom-in");
+const diagramViewerClose = document.getElementById("diagram-viewer-close");
+
+const DIAGRAM_ZOOM_STEP = 1.25;
+const DIAGRAM_MIN_ZOOM = 0.1;
+const DIAGRAM_MAX_ZOOM = 4;
+const DIAGRAM_VIEWER_PADDING = 48;
+let diagramViewerState = null;
+let diagramViewerTrigger = null;
+
+function setDiagramViewerScale(scale) {
+  if (!diagramViewerState) return;
+  const minimum = Math.min(DIAGRAM_MIN_ZOOM, diagramViewerState.fitScale);
+  const maximum = Math.max(DIAGRAM_MAX_ZOOM, diagramViewerState.fitScale);
+  const bounded = Math.min(Math.max(scale, minimum), maximum);
+  diagramViewerState.scale = bounded;
+  diagramViewerImage.style.width = `${diagramViewerState.width * bounded}px`;
+  diagramViewerImage.style.height = `${diagramViewerState.height * bounded}px`;
+  diagramViewerZoom.value = `${Math.round(bounded * 100)}%`;
+}
+
+function fitDiagramViewer() {
+  if (!diagramViewerState || !diagramViewer.open) return;
+  const availableWidth = Math.max(1, diagramViewerViewport.clientWidth - DIAGRAM_VIEWER_PADDING);
+  const availableHeight = Math.max(1, diagramViewerViewport.clientHeight - DIAGRAM_VIEWER_PADDING);
+  // Fit never enlarges beyond the Diagram's renderer-defined size. The
+  // viewer is still magnified relative to the capped inline Preview, while
+  // 100% remains a meaningful, crisp baseline for detailed inspection.
+  diagramViewerState.fitScale = Math.min(
+    1,
+    availableWidth / diagramViewerState.width,
+    availableHeight / diagramViewerState.height
+  );
+  setDiagramViewerScale(diagramViewerState.fitScale);
+  diagramViewerViewport.scrollTo(0, 0);
+}
+
+function openDiagramViewer(sourceImage, trigger = sourceImage) {
+  const width = Number(sourceImage.dataset.intrinsicWidth) || sourceImage.naturalWidth;
+  const height = Number(sourceImage.dataset.intrinsicHeight) || sourceImage.naturalHeight;
+  if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) return;
+
+  diagramViewerTrigger = trigger;
+  diagramViewerState = { width, height, scale: 1, fitScale: 1 };
+  const name = sourceImage.alt.trim() || "Mermaid diagram";
+  diagramViewerTitle.textContent = name;
+  diagramViewerImage.alt = name;
+  diagramViewerImage.src = sourceImage.currentSrc || sourceImage.src;
+  if (!diagramViewer.open) diagramViewer.showModal();
+  requestAnimationFrame(fitDiagramViewer);
+}
+
+function closeDiagramViewer() {
+  if (diagramViewer.open) diagramViewer.close();
+}
+
+function configurePreviewDiagram(figure) {
+  const image = figure.querySelector("img");
+  const openLink = figure.querySelector(".contexture-mermaid__open");
+  const diagramID = figure.dataset.diagramId;
+  if (!image || !openLink || !/^\d+$/.test(diagramID || "")) return;
+  const refresh = () => {
+    const intrinsicWidth = Number(image.dataset.intrinsicWidth) || image.naturalWidth;
+    const intrinsicHeight = Number(image.dataset.intrinsicHeight) || image.naturalHeight;
+    const bounds = image.getBoundingClientRect();
+    const expandable = isDiagramSizeLimited(
+      intrinsicWidth,
+      intrinsicHeight,
+      bounds.width,
+      bounds.height
+    );
+    if (expandable) {
+      openLink.dataset.contextureExpandable = "true";
+      openLink.setAttribute("href", `#contexture-diagram-${diagramID}`);
+      openLink.setAttribute("aria-label", `Open enlarged view of ${image.alt || "Mermaid diagram"}`);
+      openLink.setAttribute("title", "Open enlarged diagram");
+    } else {
+      delete openLink.dataset.contextureExpandable;
+      openLink.removeAttribute("href");
+      openLink.removeAttribute("aria-label");
+      openLink.removeAttribute("title");
+    }
+  };
+  if (image.complete) refresh();
+  else image.addEventListener("load", refresh, { once: true });
+}
+
+function configurePreviewDiagramInteractions() {
+  const previewDocument = previewFrame.contentDocument;
+  if (!previewDocument) return;
+  for (const figure of previewDocument.querySelectorAll(".contexture-mermaid")) {
+    configurePreviewDiagram(figure);
+  }
+}
+
+window.__contexture_openDiagram = function openDiagram(identifier) {
+  if (!/^\d+$/.test(String(identifier))) return false;
+  const figure = previewFrame.contentDocument?.querySelector(
+    `.contexture-mermaid[data-diagram-id="${identifier}"]`
+  );
+  const openLink = figure?.querySelector(".contexture-mermaid__open");
+  const image = openLink?.querySelector("img");
+  if (openLink?.dataset.contextureExpandable !== "true" || !image) return false;
+  openDiagramViewer(image, openLink);
+  return true;
+};
+
+diagramViewerZoomOut.addEventListener("click", () => {
+  if (diagramViewerState) setDiagramViewerScale(diagramViewerState.scale / DIAGRAM_ZOOM_STEP);
+});
+diagramViewerFit.addEventListener("click", fitDiagramViewer);
+diagramViewerZoomIn.addEventListener("click", () => {
+  if (diagramViewerState) setDiagramViewerScale(diagramViewerState.scale * DIAGRAM_ZOOM_STEP);
+});
+diagramViewerClose.addEventListener("click", closeDiagramViewer);
+diagramViewer.addEventListener("click", (event) => {
+  if (event.target !== diagramViewer) return;
+  const bounds = diagramViewer.getBoundingClientRect();
+  const outside = event.clientX < bounds.left || event.clientX > bounds.right
+    || event.clientY < bounds.top || event.clientY > bounds.bottom;
+  if (outside) closeDiagramViewer();
+});
+diagramViewer.addEventListener("keydown", (event) => {
+  if (event.key === "+" || event.key === "=") {
+    event.preventDefault();
+    diagramViewerZoomIn.click();
+  } else if (event.key === "-") {
+    event.preventDefault();
+    diagramViewerZoomOut.click();
+  } else if (event.key === "0") {
+    event.preventDefault();
+    fitDiagramViewer();
+  }
+});
+diagramViewer.addEventListener("close", () => {
+  diagramViewerImage.removeAttribute("src");
+  diagramViewerImage.style.removeProperty("width");
+  diagramViewerImage.style.removeProperty("height");
+  diagramViewerState = null;
+  if (diagramViewerTrigger?.isConnected) diagramViewerTrigger.focus();
+  diagramViewerTrigger = null;
+});
+
+new ResizeObserver(() => {
+  const viewerWasFit = diagramViewerState
+    && Math.abs(diagramViewerState.scale - diagramViewerState.fitScale) < 0.001;
+  const previewDocument = previewFrame.contentDocument;
+  if (!previewDocument) return;
+  for (const figure of previewDocument.querySelectorAll(".contexture-mermaid")) {
+    configurePreviewDiagram(figure);
+  }
+  if (viewerWasFit) requestAnimationFrame(fitDiagramViewer);
+}).observe(previewFrame);
 
 window.__contexture_setPreviewHTML = function setPreviewHTML(html) {
+  closeDiagramViewer();
   let scrollY = 0;
   try {
     scrollY = previewFrame.contentWindow ? previewFrame.contentWindow.scrollY : 0;
@@ -318,6 +501,7 @@ window.__contexture_setPreviewHTML = function setPreviewHTML(html) {
     if (!range.empty) {
       applyPreviewHighlightForSelection(range);
     }
+    configurePreviewDiagramInteractions();
   };
   previewFrame.addEventListener("load", restoreScroll);
   previewFrame.srcdoc = html;

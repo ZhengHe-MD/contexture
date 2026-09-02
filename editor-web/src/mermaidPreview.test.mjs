@@ -4,7 +4,9 @@ import MarkdownIt from "markdown-it";
 import { stampSourceRanges } from "./blockMap.js";
 import {
   isLocalSVGReference,
+  isDiagramSizeLimited,
   isMermaidFence,
+  normalizeMermaidSVGForXML,
   renderMarkdownPreview,
   sanitizeCSSReferences,
   summarizeMermaidError,
@@ -45,6 +47,14 @@ test("removes CSS imports and non-fragment URL loads while preserving SVG marker
   assert.match(sanitized, /background: none/);
 });
 
+test("repairs Mermaid HTML line breaks for strict SVG parsing", () => {
+  const svg = '<svg><foreignObject><p>line one<br>line two<BR >line three<br/></p></foreignObject></svg>';
+  assert.equal(
+    normalizeMermaidSVGForXML(svg),
+    '<svg><foreignObject><p>line one<br/>line two<br/>line three<br/></p></foreignObject></svg>'
+  );
+});
+
 test("encodes Unicode SVG as a base64 data image", () => {
   const dataURL = svgDataURL("<svg><text>你好</text></svg>");
   assert.match(dataURL, /^data:image\/svg\+xml;base64,/);
@@ -62,15 +72,26 @@ test("replaces a Mermaid Block with an inert image at the full fenced Source ran
       return {
         dataURL: "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=",
         accessibleName: "A to B",
+        intrinsicWidth: 640,
+        intrinsicHeight: 360,
       };
     }
   );
 
-  assert.match(html, /<figure class="contexture-mermaid" data-src="2-6">/);
-  assert.match(html, /<img src="data:image\/svg\+xml;base64,PHN2Zz48L3N2Zz4=" alt="A to B">/);
+  assert.match(html, /<figure class="contexture-mermaid" data-src="2-6" data-diagram-id="0">/);
+  assert.match(html, /<a class="contexture-mermaid__open">/);
+  assert.match(html, /<img src="data:image\/svg\+xml;base64,PHN2Zz48L3N2Zz4=" alt="A to B" width="640" height="360" data-intrinsic-width="640" data-intrinsic-height="360" style="width:640px;height:360px">/);
   assert.doesNotMatch(html, /language-mermaid/);
   assert.match(html, /<p data-src="0-1">Before<\/p>/);
   assert.match(html, /<p data-src="7-8">After<\/p>/);
+});
+
+test("marks a Diagram as size-limited only when valid intrinsic dimensions were reduced", () => {
+  assert.equal(isDiagramSizeLimited(1_200, 800, 600, 400), true);
+  assert.equal(isDiagramSizeLimited(600, 400, 600, 400), false);
+  assert.equal(isDiagramSizeLimited(600, 400, 599.5, 400), false);
+  assert.equal(isDiagramSizeLimited(0, 400, 200, 200), false);
+  assert.equal(isDiagramSizeLimited(Number.NaN, 400, 200, 200), false);
 });
 
 test("leaves differently-cased and non-Mermaid fences as ordinary code", async () => {

@@ -30,6 +30,23 @@
         referrerpolicy="no-referrer"
       ></iframe>
     </div>
+    <dialog id="diagram-viewer" aria-labelledby="diagram-viewer-title">
+      <header class="diagram-viewer__toolbar">
+        <strong id="diagram-viewer-title">Diagram</strong>
+        <div class="diagram-viewer__controls" aria-label="Diagram zoom controls">
+          <button id="diagram-viewer-zoom-out" type="button" aria-label="Zoom out">−</button>
+          <button id="diagram-viewer-fit" type="button">Fit</button>
+          <output id="diagram-viewer-zoom" aria-live="polite">100%</output>
+          <button id="diagram-viewer-zoom-in" type="button" aria-label="Zoom in">+</button>
+          <button id="diagram-viewer-close" type="button" autofocus>Close</button>
+        </div>
+      </header>
+      <div id="diagram-viewer-viewport" class="diagram-viewer__viewport">
+        <div class="diagram-viewer__stage">
+          <img id="diagram-viewer-image" alt="" draggable="false">
+        </div>
+      </div>
+    </dialog>
     <script src="bundle.js"></script>
   </body>
 </html>

@@ -14,7 +14,7 @@ import WebKit
 /// whose `srcdoc` is a document `PreviewDocumentBuilder` sanitizes and
 /// wraps in a strict CSP before this controller ever hands it to the web
 /// view. See `editorBridgePreviewHTMLDidChange(_:)` below.
-final class EditorViewController: NSViewController, EditorBridgeDelegate {
+final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavigationDelegate {
     private let webView: WKWebView
     private let messageHandler = EditorBridgeMessageHandler()
     private var pendingInitialText: String?
@@ -39,6 +39,7 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate {
         // comment and PreviewDocumentBuilder).
         self.webView = WKWebView(frame: .zero, configuration: configuration)
         super.init(nibName: nil, bundle: nil)
+        webView.navigationDelegate = self
         contentController.add(messageHandler, name: "contexture")
         messageHandler.delegate = self
     }
@@ -136,4 +137,45 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate {
               let json = String(data: payload, encoding: .utf8) else { return }
         webView.evaluateJavaScript("window.__contexture_setPreviewHTML(\(json))")
     }
+
+    // A script-disabled Preview iframe cannot dispatch click handlers back to
+    // the trusted outer page. Size-limited Diagram links therefore request a
+    // numeric fragment navigation. Native cancels it before the iframe leaves
+    // its srcdoc and asks the outer editor to open that current Diagram.
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
+        guard let identifier = Self.diagramIdentifier(from: navigationAction.request.url) else {
+            decisionHandler(.allow)
+            return
+        }
+        decisionHandler(.cancel)
+        guard let payload = try? JSONEncoder().encode(identifier),
+              let json = String(data: payload, encoding: .utf8) else { return }
+        webView.evaluateJavaScript("window.__contexture_openDiagram(\(json))")
+    }
+
+    static func diagramIdentifier(from url: URL?) -> String? {
+        let prefix = "contexture-diagram-"
+        guard let url else { return nil }
+        // Foundation on macOS 14 does not expose the fragment of an opaque
+        // `about:srcdoc#...` URL through URL.fragment, while newer releases
+        // do. WKWebView can use either that form or the inherited file URL
+        // for a srcdoc link, so retain URL.fragment as the primary parser and
+        // fall back to the literal suffix after `#` for the older behavior.
+        let absoluteString = url.absoluteString.removingPercentEncoding ?? url.absoluteString
+        let fragment = url.fragment ?? absoluteString
+            .split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
+            .dropFirst()
+            .first
+            .map(String.init)
+        guard let fragment, fragment.hasPrefix(prefix) else { return nil }
+        let identifier = String(fragment.dropFirst(prefix.count))
+        guard !identifier.isEmpty,
+              identifier.allSatisfy({ $0 >= "0" && $0 <= "9" }) else { return nil }
+        return identifier
+    }
+
 }
