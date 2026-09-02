@@ -65,6 +65,14 @@ import Testing
         #expect(document.contains(".contexture-mermaid img"))
     }
 
+    @Test func sizesDiagramsToTheirContentWithAHalfViewportHeightLimit() {
+        let document = PreviewDocumentBuilder.buildDocument(bodyHTML: "<p>hi</p>")
+        #expect(document.contains("display: flex"))
+        #expect(document.contains("max-width: 100%"))
+        #expect(document.contains("max-height: 50vh"))
+        #expect(document.contains("cursor: zoom-in"))
+    }
+
     @Test func embedsTheSynchronizedSelectionHighlightStyle() {
         // issue #5: the outer trusted page's own script (never anything
         // running inside this sandboxed document) toggles this class on the

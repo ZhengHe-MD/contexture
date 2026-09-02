@@ -79,8 +79,12 @@ persistent count of Armed snapshots and offers a single-key clear.
   horizontal viewport.
 - Show the Selection in both panes simultaneously. A Preview selection snaps
   outward to complete nodes so that published bytes stay parseable.
-- Render Mermaid Blocks as atomic Preview nodes. A Preview Selection touching
-  a Diagram snaps to the whole fenced block; an ordinary click does not Arm it.
+- Render Mermaid Blocks as atomic Preview nodes. Size each Diagram to its
+  content up to the Preview width and half the Preview viewport height. When
+  either limit reduces it, make it a keyboard-accessible zoom target that
+  opens an app-level viewer with fit/zoom controls; closing the viewer returns
+  the writer to the same place. A Preview Selection touching a Diagram snaps
+  to the whole fenced block; opening its viewer does not Arm it.
 - Follow macOS light/dark appearance when rendering a Diagram. Safe visual
   Mermaid configuration may override presentation, but never Contexture's
   security or resource limits.

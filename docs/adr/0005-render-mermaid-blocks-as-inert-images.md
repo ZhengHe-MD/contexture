@@ -30,4 +30,10 @@ A Preview Selection that touches a Diagram maps to the entire Mermaid Block;
 individual Diagram labels are not selectable. Diagrams render concurrently and
 the Preview changes only when the complete current render is ready. Invalid or
 over-limit Diagram Source becomes an inline error rather than a stale Diagram,
-and Mermaid upgrades are deliberate lockfile changes.
+and Mermaid upgrades are deliberate lockfile changes. A size-limited Diagram
+may be copied into a trusted outer-page viewer for magnification, but it remains
+the same inert data image; no script or inline SVG is added to the Preview. Its
+script-free activation requests only a numeric fragment navigation; the native
+shell cancels that navigation before it replaces the Preview, and the trusted
+outer page resolves the identifier against the current render before opening
+the viewer.
