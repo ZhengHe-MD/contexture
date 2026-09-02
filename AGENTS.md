@@ -6,6 +6,8 @@
   `docs/architecture/selection-bridge.md` and
   `docs/research/agent-compatibility.md`.
 - Architectural changes: read the relevant record under `docs/adr/`.
+- Releases and packaging: read `docs/install.md`; the pipeline is
+  `.github/workflows/release.yml`, driven by pushing a `v*` tag.
 
 ## Agent skills
 

@@ -173,6 +173,16 @@ Developer ID-signed and notarized direct download. This is now a commitment
 rather than a preference: a sandboxed App Store build places the Unix domain
 socket inside the app container, where external agent hooks cannot reach it.
 
+Until an Apple Developer ID exists, releases ship ad-hoc signed instead:
+built and published from a v-prefixed git tag by `.github/workflows/release.yml`,
+attached to a GitHub release as a universal app zip plus an adapter tarball.
+An ad-hoc signature is enough to run on Apple Silicon but not enough for
+Gatekeeper, so the notarization gap is handed to the reader as one explicit
+one-time quarantine step on the release page and in `docs/install.md` rather
+than left to look like a broken download. Signing and notarizing is then a
+change to the packaging step alone — the artifacts, the tag trigger, and the
+install path do not move.
+
 Agent adapters may be installed separately. If an adapter or CLI is present
 while the macOS app is absent or not running, it must fail open: return no
 Selection Context, avoid modifying the prompt, and expose diagnostics only on
