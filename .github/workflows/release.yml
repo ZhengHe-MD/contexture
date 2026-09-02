@@ -1,0 +1,88 @@
+name: Release
+
+# Tag-driven: pushing a v* tag cuts the release. workflow_dispatch re-runs
+# the same build against an existing tag, for when a release job fails on
+# something outside the code (a runner hiccup, a transient npm registry
+# error) and the tag itself is fine.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and release (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          # Full history so release-notes.sh can log against the previous tag.
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: version
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          case "$TAG" in
+            v*) ;;
+            *) echo "::error::expected a v-prefixed tag, got '$TAG'"; exit 1 ;;
+          esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "previous=$(git tag --list 'v*' --sort=-version:refname \
+            | grep -v "^$TAG$" | head -n 1)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: editor-web/package-lock.json
+
+      - name: npm ci
+        working-directory: editor-web
+        run: npm ci
+
+      - name: editor-web tests
+        working-directory: editor-web
+        run: npm test
+
+      - name: editor-web build
+        working-directory: editor-web
+        run: npm run build
+
+      # Same guard as the Test workflow: a release must never ship an editor
+      # bundle that differs from the one under review in the repo.
+      - name: fail if the built editor bundle differs from what's committed
+        run: git diff --exit-code -- Sources/ContextureApp/Resources/editor
+
+      - name: swift test
+        run: swift test
+
+      - name: Package artifacts
+        env:
+          CONTEXTURE_BUILD: ${{ github.run_number }}
+        run: ./scripts/package-release.sh "${{ steps.version.outputs.version }}"
+
+      - name: Write release notes
+        run: |
+          ./scripts/release-notes.sh \
+            "${{ steps.version.outputs.version }}" \
+            "${{ steps.version.outputs.previous }}" > "$RUNNER_TEMP/notes.md"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "Contexture ${{ steps.version.outputs.tag }}" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            dist/Contexture-*.zip \
+            dist/contexture-adapters-*.tar.gz \
+            dist/SHA256SUMS.txt

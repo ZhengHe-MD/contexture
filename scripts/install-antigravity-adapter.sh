@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 # Installs the Antigravity 2.x desktop adapter as a global plugin bundle:
-# builds it, copies the binary to a stable path, and writes Antigravity's
-# documented root-level plugin.json and hooks.json files. See
-# docs/research/agent-compatibility.md for the primary-source links.
+# puts the binary at a stable path and writes Antigravity's documented
+# root-level plugin.json and hooks.json files. See
+# docs/research/agent-compatibility.md for the primary-source links. The
+# binary comes from a source build here, or from the prebuilt bin/ in a
+# release tarball — see scripts/lib/adapter-binary.sh.
 #
 # Reversible: scripts/uninstall-antigravity-adapter.sh removes exactly what
 # this script creates and nothing else.
 set -euo pipefail
-cd "$(dirname "$0")/.."
-
-swift build -c release --product AntigravityAdapter
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR/.."
+# shellcheck source=lib/adapter-binary.sh
+. "$SCRIPT_DIR/lib/adapter-binary.sh"
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "error: jq is required" >&2
@@ -25,7 +28,7 @@ PLUGIN_ROOT="${CONTEXTURE_ANTIGRAVITY_PLUGIN_ROOT:-$HOME/.gemini/config/plugins/
 
 mkdir -p "$INSTALL_DIR"
 BIN_PATH="$INSTALL_DIR/antigravity-adapter"
-cp "$(swift build -c release --show-bin-path)/AntigravityAdapter" "$BIN_PATH"
+cp "$(resolve_adapter_binary AntigravityAdapter)" "$BIN_PATH"
 chmod +x "$BIN_PATH"
 
 mkdir -p "$PLUGIN_ROOT"

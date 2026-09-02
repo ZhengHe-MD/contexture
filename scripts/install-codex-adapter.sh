@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Minimal, functional install of the Codex adapter: builds it, copies the
-# binary to a stable path (so it survives .build/ getting cleaned), and
-# registers it as a UserPromptSubmit hook in Codex's config file.
+# Minimal, functional install of the Codex adapter: puts a binary at a stable
+# path (so it survives .build/ getting cleaned) and registers it as a
+# UserPromptSubmit hook in Codex's config file. The binary comes from a source
+# build here, or from the prebuilt bin/ in a release tarball — see
+# scripts/lib/adapter-binary.sh.
 #
 # UNVERIFIED ASSUMPTION, read before relying on this script:
 # docs/research/agent-compatibility.md (this project's authoritative source
@@ -28,19 +30,20 @@
 # scope Claude Code's install script chose (see its own header comment,
 # which points at issue #12 for that follow-up work).
 set -euo pipefail
-cd "$(dirname "$0")/.."
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR/.."
+# shellcheck source=lib/adapter-binary.sh
+. "$SCRIPT_DIR/lib/adapter-binary.sh"
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "error: jq is required (brew install jq)" >&2
   exit 1
 fi
 
-swift build -c release --product CodexAdapter
-
 INSTALL_DIR="$HOME/Library/Application Support/Contexture/bin"
 mkdir -p "$INSTALL_DIR"
 BIN_PATH="$INSTALL_DIR/codex-adapter"
-cp "$(swift build -c release --show-bin-path)/CodexAdapter" "$BIN_PATH"
+cp "$(resolve_adapter_binary CodexAdapter)" "$BIN_PATH"
 chmod +x "$BIN_PATH"
 
 CONFIG_PATH="${CODEX_CONFIG_PATH:-$HOME/.codex/config.json}"
