@@ -11,10 +11,10 @@ import Testing
 /// "repeated hook call in the same turn" generically (case 5, exactly
 /// two calls), which this Adapter also passes unmodified via
 /// AntigravityAdapterConformanceTests. This test goes further: it drives
-/// *three* real `PreInvocation`-shaped subprocess invocations, all keyed
-/// to the same turn identity — matching Antigravity's documented
-/// behavior of firing before *each* model call within a single user
-/// task — against a real throwaway Bridge, and asserts the Selection
+/// *three* real `PreInvocation`-shaped subprocess invocations in the same
+/// conversation — matching Antigravity's documented behavior of firing
+/// before *each* model call within a single user task — against a real
+/// throwaway Bridge, and asserts the Selection
 /// Context is injected on exactly the first call and `injectSteps` is
 /// literally absent (not empty, not null) on every later one.
 @Suite struct AntigravityAdapterMultiInvocationTests {
@@ -51,8 +51,10 @@ import Testing
             version: 1
         ))
 
-        // Every call below reuses the same conversationID/turnID — the
-        // same armed Snapshot, several PreInvocation calls, one turn.
+        // Every call below reuses the same conversation ID — one armed
+        // Snapshot across several PreInvocation calls in one task. The
+        // adapter wrapper intentionally ignores HarnessScenario.turnID
+        // because Antigravity's documented payload does not include one.
         let scenario = HarnessScenario(
             workingRoot: workingRoot.path,
             conversationID: "conv-multi-invocation",

@@ -10,20 +10,17 @@ struct AntigravityAdapterUnderTest: AdapterUnderTest {
     let executableURL: URL
 
     func invoke(scenario: HarnessScenario, bridgeSocketPath: String) throws -> HookResult {
-        // Field names match PreInvocationInput (Sources/AntigravityAdapter/
-        // AdapterCore.swift) — a documented best-effort guess at
-        // Antigravity's real `PreInvocation` stdin shape. `turnId` carries
-        // the harness's turn identity directly; there is no separate
-        // prompt-event identity in `HarnessScenario`; a real host might
-        // supply one alongside `turnId`, but the harness never needs the
-        // fallback path exercised through this wrapper since `turnId` is
-        // always present here.
+        // Match Antigravity 2.11's documented PreInvocation input shape.
+        // Antigravity does not expose a per-turn ID here; the Bridge's
+        // successful Next Prompt acknowledgement prevents repeat injection.
         let stdinObject: [String: Any] = [
-            "hookEventName": "PreInvocation",
-            "turnId": scenario.turnID,
+            "invocationNum": 0,
+            "initialNumSteps": 0,
             "conversationId": scenario.conversationID,
-            "cwd": scenario.workingRoot,
-            "prompt": scenario.prompt,
+            "workspacePaths": [scenario.workingRoot],
+            "transcriptPath": "/tmp/contexture-antigravity-transcript.jsonl",
+            "artifactDirectoryPath": "/tmp/contexture-antigravity-artifacts",
+            "modelName": "test-model",
         ]
         let stdinData = try JSONSerialization.data(withJSONObject: stdinObject)
 

@@ -23,17 +23,20 @@ import Testing
     }
 
     private func stdin(
-        turnId: String? = "turn-123",
-        promptEventId: String? = "event-456",
+        turnId: String? = nil,
+        promptEventId: String? = nil,
         conversationId: String? = "conv-789",
-        cwd: String? = "/Users/writer/project"
+        workspacePaths: [String]? = ["/Users/writer/project"],
+        cwd: String? = nil
     ) -> Data {
         var object: [String: Any] = [:]
         if let turnId { object["turnId"] = turnId }
         if let promptEventId { object["promptEventId"] = promptEventId }
         if let conversationId { object["conversationId"] = conversationId }
+        if let workspacePaths { object["workspacePaths"] = workspacePaths }
         if let cwd { object["cwd"] = cwd }
-        object["hookEventName"] = "PreInvocation"
+        object["invocationNum"] = 0
+        object["initialNumSteps"] = 0
         return try! JSONSerialization.data(withJSONObject: object)
     }
 
@@ -62,7 +65,7 @@ import Testing
                 #expect(consumerID == "antigravity")
                 #expect(conversationID == "conv-789")
                 #expect(workingRoot == "/Users/writer/project")
-                #expect(turnID == "turn-123")
+                #expect(turnID == nil)
                 return [snap]
             },
             ack: { ids, consumptionID in
@@ -79,8 +82,7 @@ import Testing
         #expect(ephemeralMessage?.contains("Contexture Selection Context") == true)
 
         #expect(ackedIDs == [snap.id])
-        // Strongest identity (turnId) wins as the Consumption key.
-        #expect(ackedConsumptionID == "turn-123")
+        #expect(ackedConsumptionID == "conv-789#v1")
     }
 
     // MARK: No-content shape — must be `{}`, not "write nothing"
@@ -146,7 +148,33 @@ import Testing
         try assertInjectStepsKeyAbsent(output)
     }
 
-    // MARK: Consumption-keying priority order
+    @Test func everyDocumentedWorkspaceRootIsQueriedAndDuplicateSnapshotsAreRemoved() throws {
+        let snap = snapshot(text: "content")
+        var capturedRoots: [String] = []
+        let output = AntigravityAdapterCore.handle(
+            stdinJSON: stdin(workspacePaths: ["/workspace/a", "/workspace/b", "/workspace/a"]),
+            read: { _, _, workingRoot, _ in
+                capturedRoots.append(workingRoot ?? "")
+                return [snap]
+            },
+            ack: { ids, _ in #expect(ids == [snap.id]) }
+        )
+        #expect(capturedRoots == ["/workspace/a", "/workspace/b"])
+        #expect(String(decoding: output, as: UTF8.self).contains("content"))
+    }
+
+    @Test func missingWorkspacePathsProducesAnEmptyObjectWithoutCallingBridge() throws {
+        var bridgeCalled = false
+        let output = AntigravityAdapterCore.handle(
+            stdinJSON: stdin(workspacePaths: nil),
+            read: { _, _, _, _ in bridgeCalled = true; return [] },
+            ack: { _, _ in }
+        )
+        #expect(!bridgeCalled)
+        try assertInjectStepsKeyAbsent(output)
+    }
+
+    // MARK: Backward compatibility with the experimental identity fields
 
     @Test func turnIdIsPreferredOverPromptEventIdAndConversationId() {
         var readWasCalled = false
@@ -222,5 +250,18 @@ import Testing
             ack: { _, _ in }
         )
         #expect(capturedTurnID == "event-1")
+    }
+
+    @Test func legacyCwdIsUsedWhenDocumentedWorkspacePathsAreAbsent() {
+        var capturedRoot: String?
+        _ = AntigravityAdapterCore.handle(
+            stdinJSON: stdin(workspacePaths: nil, cwd: "/legacy/root"),
+            read: { _, _, workingRoot, _ in
+                capturedRoot = workingRoot
+                return [snapshot(text: "content")]
+            },
+            ack: { _, _ in }
+        )
+        #expect(capturedRoot == "/legacy/root")
     }
 }

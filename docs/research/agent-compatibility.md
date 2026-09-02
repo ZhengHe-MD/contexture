@@ -86,11 +86,16 @@ Adapter omits `injectSteps`. Because one user task can contain multiple model
 invocations, Consumption must be keyed so the same selection is injected at
 most once per user turn.
 
-Antigravity plugins can bundle hooks and MCP configuration, providing a useful
-single-package distribution path for the Adapter.
+For the Antigravity 2.x desktop app, global plugins live under
+`~/.gemini/config/plugins/<plugin-name>/`. A plugin has root-level
+`plugin.json` and `hooks.json` files. The hook input supplies `conversationId`
+and `workspacePaths`; `PreInvocation` supplies `invocationNum` but no distinct
+turn ID. Contexture therefore scopes one Bridge read to each mounted workspace
+and relies on successful Next Prompt acknowledgement to prevent repeat
+injection during later invocations in the same task.
 
 Sources: [Antigravity Hooks](https://www.antigravity.google/docs/hooks/),
-[Antigravity Plugins](https://www.antigravity.google/docs/cli/plugins/),
+[Antigravity Plugins](https://www.antigravity.google/docs/plugins/),
 [Antigravity MCP](https://antigravity.google/docs/mcp)
 
 ### Cursor
@@ -121,4 +126,3 @@ Agent Host must be tested on supported versions with a real installed Adapter,
 including the shared empty-selection and deduplication cases. The app should
 show “deterministic,” “best effort,” or “not installed” rather than flattening
 these levels into one supported badge.
-

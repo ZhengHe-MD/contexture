@@ -62,7 +62,14 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        guard let indexURL = Bundle.module.url(forResource: "index", withExtension: "html", subdirectory: "editor") else {
+        let installedResourceBundle = Bundle.main.resourceURL
+            .map { $0.appendingPathComponent("Contexture_ContextureApp.bundle", isDirectory: true) }
+            .flatMap(Bundle.init(url:))
+        guard let indexURL = installedResourceBundle?.url(
+            forResource: "index",
+            withExtension: "html",
+            subdirectory: "editor"
+        ) ?? Bundle.module.url(forResource: "index", withExtension: "html", subdirectory: "editor") else {
             fatalError("Contexture was built without its bundled editor resources")
         }
         webView.loadFileURL(indexURL, allowingReadAccessTo: indexURL.deletingLastPathComponent())

@@ -5,7 +5,7 @@
 set -euo pipefail
 
 INSTALL_DIR="${CONTEXTURE_ANTIGRAVITY_BIN_DIR:-$HOME/Library/Application Support/Contexture/bin}"
-PLUGIN_ROOT="${CONTEXTURE_ANTIGRAVITY_PLUGIN_ROOT:-$HOME/.antigravity/plugins/contexture-adapter}"
+PLUGIN_ROOT="${CONTEXTURE_ANTIGRAVITY_PLUGIN_ROOT:-$HOME/.gemini/config/plugins/contexture-adapter}"
 BIN_PATH="$INSTALL_DIR/antigravity-adapter"
 
 if [ -f "$BIN_PATH" ]; then

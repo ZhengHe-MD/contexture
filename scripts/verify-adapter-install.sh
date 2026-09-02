@@ -40,7 +40,7 @@ echo "== Installing all three =="
 [ -f "$CONTEXTURE_ANTIGRAVITY_BIN_DIR/antigravity-adapter" ] || fail "antigravity-adapter binary missing after install"
 grep -q "claude-code-adapter" "$CLAUDE_CODE_SETTINGS_PATH" || fail "Claude Code hook not registered"
 grep -q "codex-adapter" "$CODEX_CONFIG_PATH" || fail "Codex hook not registered"
-[ -f "$CONTEXTURE_ANTIGRAVITY_PLUGIN_ROOT/hooks/hooks.json" ] || fail "Antigravity plugin bundle missing after install"
+[ -f "$CONTEXTURE_ANTIGRAVITY_PLUGIN_ROOT/hooks.json" ] || fail "Antigravity plugin bundle missing after install"
 
 echo "== Uninstalling all three =="
 ./scripts/uninstall-claude-code-adapter.sh
