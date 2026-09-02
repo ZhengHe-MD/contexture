@@ -3,6 +3,7 @@ import { EditorState, EditorSelection } from "@codemirror/state";
 import { markdown } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import MarkdownIt from "markdown-it";
+import mermaid from "mermaid";
 import {
   stampSourceRanges,
   parseBlockRange,
@@ -11,6 +12,12 @@ import {
   cmLinesForBlockRange,
   blockRangeForCmLines,
 } from "./blockMap.js";
+import {
+  isLocalSVGReference,
+  renderMarkdownPreview,
+  sanitizeCSSReferences,
+  svgDataURL,
+} from "./mermaidPreview.js";
 
 // Bridge protocol with the native shell (see Sources/ContextureApp/EditorBridge.swift):
 //   JS -> native: window.webkit.messageHandlers.contexture.postMessage({ type, ... })
@@ -29,10 +36,10 @@ function postToNative(message) {
 // real GFM semantics. That is exactly the untrusted-content case the Preview
 // pane's isolation exists for (see editorBridgePreviewHTMLDidChange in
 // Sources/ContextureApp/EditorViewController.swift and
-// Sources/ContextureApp/PreviewDocumentBuilder.swift): this module only
-// turns Source into an HTML string, it never renders it. The resulting
-// string is untrusted and is sanitized + wrapped with a strict CSP by native
-// Swift before it ever reaches the sandboxed #preview iframe below.
+// Sources/ContextureApp/PreviewDocumentBuilder.swift): this module converts
+// Source into an HTML string but never installs that untrusted output into a
+// live document. Native Swift first sanitizes it and wraps it with a strict
+// CSP before it reaches the sandboxed #preview iframe below.
 //
 // `stampSourceRanges` (blockMap.js) adds `data-src="<start>-<end>"` to every
 // block-level element so the Source <-> Preview Selection mapping (issue #5)
@@ -43,6 +50,102 @@ function postToNative(message) {
 // risk `PreviewSanitizer`/`PreviewDocumentBuilder` guard against.
 const markdownRenderer = new MarkdownIt({ html: true, linkify: true });
 markdownRenderer.use(stampSourceRanges);
+
+// Mermaid itself runs only in this trusted, bundled outer page. Diagram
+// Source never runs: it is parsed with Mermaid's strict security level, the
+// resulting SVG is stripped of active and remote-loading constructs, then
+// encoded as an inert data: image before native Swift sanitizes and wraps the
+// complete Preview. The sandboxed Preview iframe therefore keeps its existing
+// no-script contract unchanged.
+const MERMAID_MAX_TEXT_SIZE = 50_000;
+const MERMAID_MAX_EDGES = 500;
+const MERMAID_LOCKED_CONFIG = [
+  "secure",
+  "securityLevel",
+  "startOnLoad",
+  "suppressErrorRendering",
+  "maxTextSize",
+  "maxEdges",
+];
+const appearance = window.matchMedia("(prefers-color-scheme: dark)");
+
+function initializeMermaidForAppearance(theme) {
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: "strict",
+    suppressErrorRendering: true,
+    maxTextSize: MERMAID_MAX_TEXT_SIZE,
+    maxEdges: MERMAID_MAX_EDGES,
+    secure: MERMAID_LOCKED_CONFIG,
+    theme,
+  });
+}
+
+function sanitizedMermaidSVG(svg) {
+  const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
+  if (parsed.querySelector("parsererror") || parsed.documentElement.localName !== "svg") {
+    throw new Error("Mermaid produced invalid SVG");
+  }
+
+  const removedElements = new Set([
+    "script", "iframe", "object", "embed", "applet", "link", "meta", "base",
+  ]);
+  const resourceAttributes = new Set([
+    "href", "src", "action", "formaction", "poster", "background", "cite",
+  ]);
+
+  for (const element of Array.from(parsed.querySelectorAll("*"))) {
+    if (removedElements.has(element.localName.toLowerCase())) {
+      element.remove();
+      continue;
+    }
+
+    if (element.localName.toLowerCase() === "style") {
+      element.textContent = sanitizeCSSReferences(element.textContent || "");
+    }
+
+    for (const attribute of Array.from(element.attributes)) {
+      const name = attribute.localName.toLowerCase();
+      if (name.startsWith("on")) {
+        element.removeAttributeNode(attribute);
+        continue;
+      }
+      if (resourceAttributes.has(name) && !isLocalSVGReference(attribute.value)) {
+        element.removeAttributeNode(attribute);
+        continue;
+      }
+      if (attribute.value.toLowerCase().includes("url(")) {
+        element.setAttributeNS(
+          attribute.namespaceURI,
+          attribute.name,
+          sanitizeCSSReferences(attribute.value)
+        );
+      }
+    }
+  }
+
+  const root = parsed.documentElement;
+  const directChild = (name) => Array.from(root.children)
+    .find((element) => element.localName.toLowerCase() === name);
+  const title = directChild("title")?.textContent?.trim() || "";
+  const description = directChild("desc")?.textContent?.trim() || "";
+  const accessibleName = [title, description].filter(Boolean).join(" — ") || "Mermaid diagram";
+
+  return {
+    svg: new XMLSerializer().serializeToString(root),
+    accessibleName,
+  };
+}
+
+async function renderMermaidDiagram(definition, previewID, diagramIndex) {
+  const id = `contexture-mermaid-${previewID}-${diagramIndex}`;
+  const { svg } = await mermaid.render(id, definition);
+  const sanitized = sanitizedMermaidSVG(svg);
+  return {
+    dataURL: svgDataURL(sanitized.svg),
+    accessibleName: sanitized.accessibleName,
+  };
+}
 
 // Content pushed in from the native side (initial load, external-file reload)
 // must not itself be reported back as a writer edit or a fresh Selection —
@@ -67,15 +170,27 @@ const byteLength = (text) => new TextEncoder().encode(text).length;
 // reason the render debounce already does.
 const PREVIEW_DEBOUNCE_MS = 150;
 let previewDebounceTimer = null;
+let previewRenderID = 0;
 
 function schedulePreviewRender() {
+  const scheduledID = ++previewRenderID;
   if (previewDebounceTimer !== null) {
     clearTimeout(previewDebounceTimer);
   }
-  previewDebounceTimer = setTimeout(() => {
+  previewDebounceTimer = setTimeout(async () => {
     previewDebounceTimer = null;
-    const html = markdownRenderer.render(view.state.doc.toString());
-    postToNative({ type: "previewHTML", html });
+    const theme = appearance.matches ? "dark" : "default";
+    initializeMermaidForAppearance(theme);
+    const html = await renderMarkdownPreview(
+      markdownRenderer,
+      view.state.doc.toString(),
+      (definition, diagramIndex) => renderMermaidDiagram(definition, scheduledID, diagramIndex)
+    );
+    // A slower, older Mermaid render must never overwrite newer Source or a
+    // newly-selected appearance after its replacement is already underway.
+    if (scheduledID === previewRenderID) {
+      postToNative({ type: "previewHTML", html });
+    }
   }, PREVIEW_DEBOUNCE_MS);
 }
 
@@ -147,6 +262,8 @@ const view = new EditorView({
   }),
   parent: document.getElementById("editor"),
 });
+
+appearance.addEventListener("change", schedulePreviewRender);
 
 window.__contexture_setContent = function setContent(text) {
   suppressChangeNotification = true;

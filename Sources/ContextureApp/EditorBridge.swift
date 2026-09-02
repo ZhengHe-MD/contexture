@@ -20,9 +20,10 @@ protocol EditorBridgeDelegate: AnyObject {
     func editorBridgeContentDidChange(_ text: String)
     func editorBridgeSelectionDidChange(_ change: EditorSelectionChange)
     /// `html` is the Source rendered to HTML by `markdown-it` in
-    /// editor-web/src/main.js — untrusted (GFM raw HTML passthrough is on),
-    /// and not yet sanitized or CSP-wrapped for the Preview pane. See
-    /// `PreviewDocumentBuilder`.
+    /// editor-web/src/main.js, with Mermaid Blocks already replaced by inert
+    /// SVG data images. It remains untrusted (GFM raw HTML passthrough is on)
+    /// and is not yet sanitized or CSP-wrapped for the Preview pane. See
+    /// `PreviewDocumentBuilder` and ADR-0005.
     func editorBridgePreviewHTMLDidChange(_ html: String)
 }
 
