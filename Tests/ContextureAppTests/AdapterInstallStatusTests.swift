@@ -47,6 +47,15 @@ import Testing
         #expect(AdapterInstallStatus.hooksConfigRegisters(json, eventName: "UserPromptSubmit", binaryPath: "/bin/adapter"))
     }
 
+    @Test func registersAntigravityRootLevelNamedHook() {
+        let json = Data("""
+        {"contexture-selection":{"PreInvocation":[
+            {"type":"command","command":"'/path with spaces/adapter'","timeout":5}
+        ]}}
+        """.utf8)
+        #expect(AdapterInstallStatus.hooksConfigRegisters(json, eventName: "PreInvocation", binaryPath: "/path with spaces/adapter"))
+    }
+
     // MARK: KnownAdapters.compatibility(for:) — real file I/O against scratch paths
 
     private func scratchDescriptor(registered: Bool, binaryExists: Bool = true) -> AdapterDescriptor {

@@ -2,37 +2,19 @@ import BridgeClient
 import ContextureKit
 import Foundation
 
-/// Antigravity's `PreInvocation` hook payload this adapter cares about.
-///
-/// Antigravity's exact stdin JSON schema is not confirmed by any source
-/// available to this repo — docs/research/agent-compatibility.md's "Google
-/// Antigravity" section (the authoritative spec for this repo, per issue
-/// #11) describes `PreInvocation`'s *behavior* ("runs before each model
-/// call", "may return `injectSteps`, including an `ephemeralMessage`") but
-/// never its input field names. The names below are a documented,
-/// best-effort guess — camelCase, mirroring the casing Antigravity's own
-/// documented *output* vocabulary uses (`injectSteps`, `ephemeralMessage`)
-/// rather than Claude Code's snake_case (`session_id`, `hook_event_name`).
-///
-/// - `turnId`: the strongest available host identity (docs/architecture/
-///   selection-bridge.md "Lifecycle and deduplication" priority order). A
-///   single user turn is expected to span several `PreInvocation` calls,
-///   and this is the identity expected to stay stable across all of them.
-/// - `promptEventId`: the fallback when `turnId` is absent — a per-hook-
-///   invocation identity. Weaker than `turnId` because nothing in the
-///   research doc confirms it is shared across every `PreInvocation` call
-///   within one turn rather than being unique to each call.
-/// - `conversationId`: the outermost, always-expected identity. Combined
-///   with a Snapshot's own `version` as the last-resort Consumption key
-///   (see `AntigravityAdapterCore.handle` below) when neither `turnId` nor
-///   `promptEventId` is present.
-/// - `cwd`: the Working Root equivalent, named to match Claude Code's own
-///   stdin field (Sources/ClaudeCodeAdapter/AdapterCore.swift) since no
-///   Antigravity-specific name is documented either.
+/// The documented Antigravity `PreInvocation` fields this adapter needs.
+/// Antigravity supplies every mounted workspace as an absolute path, so the
+/// adapter queries the Bridge once per root and de-duplicates snapshots when
+/// roots overlap. The legacy identity/root fields remain optional so an older
+/// locally installed hook can fail open during an upgrade.
 struct PreInvocationInput: Decodable {
+    let conversationId: String?
+    let workspacePaths: [String]?
+    let invocationNum: Int?
+
+    // Backward-compatible aliases used by the pre-2.11 experimental adapter.
     let turnId: String?
     let promptEventId: String?
-    let conversationId: String?
     let cwd: String?
 }
 
@@ -102,9 +84,23 @@ enum AntigravityAdapterCore {
         // `version`, which only exists after `read` returns — so it is
         // computed below, only if needed, for `ack`'s consumptionID.
         let strongIdentity = nonEmpty(input.turnId) ?? nonEmpty(input.promptEventId)
+        let documentedRoots = input.workspacePaths?.compactMap(nonEmpty) ?? []
+        let legacyRoots = [input.cwd].compactMap { $0 }.compactMap(nonEmpty)
+        let workingRoots = unique(documentedRoots.isEmpty ? legacyRoots : documentedRoots)
+        guard !workingRoots.isEmpty else { return emptyOutput() }
 
-        let snapshots = read("antigravity", conversationID, input.cwd, strongIdentity)
-            .filter { !$0.isEffectivelyEmpty }
+        var seenSnapshotIDs = Set<SnapshotID>()
+        var snapshots: [SelectionSnapshot] = []
+        for workingRoot in workingRoots {
+            for snapshot in read("antigravity", conversationID, workingRoot, strongIdentity)
+                where !snapshot.isEffectivelyEmpty && seenSnapshotIDs.insert(snapshot.id).inserted {
+                snapshots.append(snapshot)
+            }
+        }
+        snapshots.sort {
+            if $0.createdAt != $1.createdAt { return $0.createdAt > $1.createdAt }
+            return $0.id.rawValue < $1.id.rawValue
+        }
 
         guard !snapshots.isEmpty, let rendered = SelectionContextRenderer.render(snapshots) else {
             return emptyOutput()
@@ -120,6 +116,11 @@ enum AntigravityAdapterCore {
     private static func nonEmpty(_ value: String?) -> String? {
         guard let value, !value.isEmpty else { return nil }
         return value
+    }
+
+    private static func unique(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.filter { seen.insert($0).inserted }
     }
 
     /// The last-resort Consumption identity: conversation plus Snapshot

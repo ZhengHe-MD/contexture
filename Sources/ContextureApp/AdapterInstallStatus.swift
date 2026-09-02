@@ -15,23 +15,36 @@ enum AdapterCompatibility: String {
 
 enum AdapterInstallStatus {
     /// True if `configJSON` registers `binaryPath` as a hook command under
-    /// `eventName`. Every one of this app's install scripts (Claude Code,
-    /// Codex, Antigravity — see scripts/install-*-adapter.sh) writes the
-    /// identical `{"hooks": {"<event>": [{"hooks": [{"command": ...}]}]}}`
-    /// shape, so one pure, file-I/O-free check covers all three: Claude
-    /// Code and Codex read it from their top-level settings/config file
-    /// keyed `UserPromptSubmit`; Antigravity's install script writes the
-    /// same shape into a separate hooks.json keyed `PreInvocation`.
+    /// `eventName`. Claude Code/Codex use a nested settings-style shape;
+    /// Antigravity uses named hook definitions at the root of hooks.json.
+    /// Keeping both checks here lets Diagnostics report the installed state
+    /// without flattening the hosts' actual configuration contracts.
     static func hooksConfigRegisters(_ configJSON: Data, eventName: String, binaryPath: String) -> Bool {
         guard let json = try? JSONSerialization.jsonObject(with: configJSON) as? [String: Any],
-              let hooks = json["hooks"] as? [String: Any],
-              let eventEntries = hooks[eventName] as? [[String: Any]] else {
-            return false
+              !json.isEmpty else { return false }
+
+        // Claude Code/Codex settings-style registration.
+        if let hooks = json["hooks"] as? [String: Any],
+           let eventEntries = hooks[eventName] as? [[String: Any]],
+           eventEntries.contains(where: { entry in
+               guard let innerHooks = entry["hooks"] as? [[String: Any]] else { return false }
+               return innerHooks.contains { command($0["command"] as? String, invokes: binaryPath) }
+           }) {
+            return true
         }
-        return eventEntries.contains { entry in
-            guard let innerHooks = entry["hooks"] as? [[String: Any]] else { return false }
-            return innerHooks.contains { ($0["command"] as? String) == binaryPath }
+
+        // Antigravity plugin hooks.json: named hook definitions at the root,
+        // with PreInvocation handlers directly under the event key.
+        return json.values.contains { value in
+            guard let definition = value as? [String: Any],
+                  let handlers = definition[eventName] as? [[String: Any]] else { return false }
+            return handlers.contains { command($0["command"] as? String, invokes: binaryPath) }
         }
+    }
+
+    private static func command(_ command: String?, invokes binaryPath: String) -> Bool {
+        guard let command else { return false }
+        return command == binaryPath || command == "\"\(binaryPath)\"" || command == "'\(binaryPath)'"
     }
 }
 
@@ -67,7 +80,7 @@ enum KnownAdapters {
             AdapterDescriptor(
                 name: "Antigravity",
                 binaryPath: installDir.appendingPathComponent("antigravity-adapter").path,
-                configPath: home.appendingPathComponent(".antigravity/plugins/contexture-adapter/hooks/hooks.json").path,
+                configPath: home.appendingPathComponent(".gemini/config/plugins/contexture-adapter/hooks.json").path,
                 hookEventName: "PreInvocation"
             ),
         ]
