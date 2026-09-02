@@ -22,6 +22,7 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate {
 
     var onContentChanged: ((String) -> Void)?
     var onSelectionChanged: ((EditorSelectionChange) -> Void)?
+    var onDocumentTitleChanged: ((String?) -> Void)?
 
     init() {
         let configuration = WKWebViewConfiguration()
@@ -116,6 +117,10 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate {
 
     func editorBridgeSelectionDidChange(_ change: EditorSelectionChange) {
         onSelectionChanged?(change)
+    }
+
+    func editorBridgeDocumentTitleDidChange(_ title: String?) {
+        onDocumentTitleChanged?(title)
     }
 
     /// `html` is untrusted (see the protocol doc comment). It is sanitized

@@ -19,6 +19,7 @@ protocol EditorBridgeDelegate: AnyObject {
     func editorBridgeDidBecomeReady()
     func editorBridgeContentDidChange(_ text: String)
     func editorBridgeSelectionDidChange(_ change: EditorSelectionChange)
+    func editorBridgeDocumentTitleDidChange(_ title: String?)
     /// `html` is the Source rendered to HTML by `markdown-it` in
     /// editor-web/src/main.js, with Mermaid Blocks already replaced by inert
     /// SVG data images. It remains untrusted (GFM raw HTML passthrough is on)
@@ -35,7 +36,13 @@ final class EditorBridgeMessageHandler: NSObject, WKScriptMessageHandler {
     weak var delegate: EditorBridgeDelegate?
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
+        handleMessageBody(message.body)
+    }
+
+    /// Kept separate from WebKit's non-constructible `WKScriptMessage` so the
+    /// JS/native protocol itself has a fast headless regression seam.
+    func handleMessageBody(_ messageBody: Any) {
+        guard let body = messageBody as? [String: Any], let type = body["type"] as? String else { return }
         switch type {
         case "ready":
             delegate?.editorBridgeDidBecomeReady()
@@ -56,6 +63,8 @@ final class EditorBridgeMessageHandler: NSObject, WKScriptMessageHandler {
                 )
                 delegate?.editorBridgeSelectionDidChange(change)
             }
+        case "documentMetadataChanged":
+            delegate?.editorBridgeDocumentTitleDidChange(body["title"] as? String)
         case "previewHTML":
             if let html = body["html"] as? String {
                 delegate?.editorBridgePreviewHTMLDidChange(html)

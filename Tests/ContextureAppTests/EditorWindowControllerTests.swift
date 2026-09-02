@@ -32,4 +32,24 @@ import Testing
 
         #expect(size == NSSize(width: 1_200, height: 800))
     }
+
+    @Test func frontMatterTitleOverridesTheDocumentFilename() {
+        #expect(
+            EditorWindowController.windowTitle(
+                frontMatterTitle: "A Writer's Page",
+                documentDisplayName: "draft.md"
+            ) == "A Writer's Page"
+        )
+    }
+
+    @Test func missingOrBlankFrontMatterTitleFallsBackToTheDocumentFilename() {
+        for title in [nil, "", "   "] as [String?] {
+            #expect(
+                EditorWindowController.windowTitle(
+                    frontMatterTitle: title,
+                    documentDisplayName: "draft.md"
+                ) == "draft.md"
+            )
+        }
+    }
 }

@@ -72,6 +72,9 @@ persistent count of Armed snapshots and offers a single-key clear.
 - Use standard macOS window chrome and traffic-light placement.
 - Keep the Source and Preview as a full-height split view; the divider runs
   continuously from the top of the content area to the bottom.
+- Keep leading YAML front matter in the Source but omit it from the Preview.
+  When it contains a non-empty string `title`, show that title in the native
+  window chrome; otherwise use the Document's filename.
 - Wrap long lines in the Source pane instead of hiding content beyond the
   horizontal viewport.
 - Show the Selection in both panes simultaneously. A Preview selection snaps

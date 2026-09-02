@@ -18,12 +18,14 @@ import {
   sanitizeCSSReferences,
   svgDataURL,
 } from "./mermaidPreview.js";
+import { parseMarkdownDocument } from "./markdownDocument.js";
 
 // Bridge protocol with the native shell (see Sources/ContextureApp/EditorBridge.swift):
 //   JS -> native: window.webkit.messageHandlers.contexture.postMessage({ type, ... })
 //     - { type: "ready" }
 //     - { type: "contentChanged", text }
 //     - { type: "selectionChanged", text, byteStart, byteEnd, line, column }
+//     - { type: "documentMetadataChanged", title }
 //     - { type: "previewHTML", html }
 //   native -> JS: evaluateJavaScript of the window.__contexture_* functions below.
 function postToNative(message) {
@@ -174,6 +176,8 @@ let previewRenderID = 0;
 
 function schedulePreviewRender() {
   const scheduledID = ++previewRenderID;
+  const document = parseMarkdownDocument(view.state.doc.toString());
+  postToNative({ type: "documentMetadataChanged", title: document.title });
   if (previewDebounceTimer !== null) {
     clearTimeout(previewDebounceTimer);
   }
@@ -183,7 +187,7 @@ function schedulePreviewRender() {
     initializeMermaidForAppearance(theme);
     const html = await renderMarkdownPreview(
       markdownRenderer,
-      view.state.doc.toString(),
+      document.previewSource,
       (definition, diagramIndex) => renderMermaidDiagram(definition, scheduledID, diagramIndex)
     );
     // A slower, older Mermaid render must never overwrite newer Source or a

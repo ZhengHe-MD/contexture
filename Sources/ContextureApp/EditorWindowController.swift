@@ -10,6 +10,7 @@ final class EditorWindowController: NSWindowController {
     private static let frameAutosaveName = "ContextureEditorWindow.v2"
 
     private let editorViewController = EditorViewController()
+    private var frontMatterTitle: String?
 
     convenience init() {
         let contentSize = Self.defaultContentSize(
@@ -49,12 +50,38 @@ final class EditorWindowController: NSWindowController {
         )
     }
 
+    static func windowTitle(frontMatterTitle: String?, documentDisplayName: String) -> String {
+        guard let title = frontMatterTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !title.isEmpty else {
+            return documentDisplayName
+        }
+        return title
+    }
+
+    override func windowTitle(forDocumentDisplayName displayName: String) -> String {
+        Self.windowTitle(frontMatterTitle: frontMatterTitle, documentDisplayName: displayName)
+    }
+
+    private func setFrontMatterTitle(_ title: String?) {
+        frontMatterTitle = title
+        synchronizeWindowTitleWithDocumentName()
+    }
+
     /// `windowDidLoad()` is only invoked automatically for a NIB-loaded
     /// window; this window is built in code, so `MarkdownDocument` calls
     /// this explicitly once the document/window-controller relationship is
     /// established via `addWindowController(_:)`.
     override func windowDidLoad() {
         super.windowDidLoad()
+        editorViewController.onContentChanged = { [weak self] newText in
+            (self?.document as? MarkdownDocument)?.updateText(newText)
+        }
+        editorViewController.onSelectionChanged = { [weak self] change in
+            (self?.document as? MarkdownDocument)?.publishSelection(change)
+        }
+        editorViewController.onDocumentTitleChanged = { [weak self] title in
+            self?.setFrontMatterTitle(title)
+        }
         if let markdownDocument = document as? MarkdownDocument {
             editorViewController.load(initialText: markdownDocument.text)
             let armedIndicator = ArmedIndicatorViewController(
@@ -62,12 +89,6 @@ final class EditorWindowController: NSWindowController {
                 bridgeServer: AppServices.bridgeServer
             )
             window?.addTitlebarAccessoryViewController(armedIndicator)
-        }
-        editorViewController.onContentChanged = { [weak self] newText in
-            (self?.document as? MarkdownDocument)?.updateText(newText)
-        }
-        editorViewController.onSelectionChanged = { [weak self] change in
-            (self?.document as? MarkdownDocument)?.publishSelection(change)
         }
     }
 
