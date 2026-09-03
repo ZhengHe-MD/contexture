@@ -164,12 +164,6 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// Used ahead of save to read the live editor rather than the last
-    /// reported `contentChanged` snapshot.
-    func currentEditorContent(_ completion: @escaping (String?) -> Void) {
-        editorViewController.fetchCurrentContent(completion)
-    }
-
     /// Pushes text into the editor surface without marking the Document
     /// dirty — used when the file on disk changed underneath a clean
     /// buffer (issue #7).

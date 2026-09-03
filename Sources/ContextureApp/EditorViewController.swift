@@ -87,15 +87,6 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
         }
     }
 
-    /// Asks the live editor for its authoritative current text rather than
-    /// relying on the last `contentChanged` message, so save is never
-    /// racing an in-flight keystroke.
-    func fetchCurrentContent(_ completion: @escaping (String?) -> Void) {
-        webView.evaluateJavaScript("window.__contexture_getContent()") { result, _ in
-            completion(result as? String)
-        }
-    }
-
     private func setContent(_ text: String) {
         guard let payload = try? JSONEncoder().encode(text),
               let json = String(data: payload, encoding: .utf8) else { return }

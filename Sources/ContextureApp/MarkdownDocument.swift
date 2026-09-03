@@ -179,38 +179,30 @@ final class MarkdownDocument: NSDocument {
         AppServices.bridgeServer.clear(documentID: documentID)
     }
 
-    /// Reads the live editor surface before writing, so save never races an
-    /// in-flight keystroke that hasn't yet reached `text` via
-    /// `updateText(_:)`. Also the flush path `publishSelection(_:)` uses —
-    /// ADR-0003 calls this a "flush", not a full interactive Save, but they
-    /// are the same underlying write; reusing it keeps there being exactly
-    /// one place this Document's bytes reach disk.
+    /// Keeps post-save disk state in sync for both an ordinary Save and the
+    /// flush path `publishSelection(_:)` uses. The Source is already mirrored
+    /// into `text` by `contentChanged` messages before WebKit returns a
+    /// subsequent Command-S key event or reports a Selection, so saving must
+    /// enter AppKit immediately from this override.
+    ///
+    /// In particular, do not put an asynchronous WebKit query before
+    /// `super.save` here. `NSDocument` serializes user Save actions by waiting
+    /// synchronously on the main thread. If an earlier save can only continue
+    /// from a WebKit completion on that same thread, a repeated Command-S
+    /// deadlocks the app.
     override func save(
         to url: URL,
         ofType typeName: String,
         for saveOperation: NSDocument.SaveOperationType,
         completionHandler: @escaping (Error?) -> Void
     ) {
-        guard let windowController = editorWindowController else {
-            super.save(to: url, ofType: typeName, for: saveOperation, completionHandler: completionHandler)
-            return
-        }
-        // Swift does not allow an explicit `self` capture here (it would
-        // make the `super.save` dispatch below ambiguous), so this closure
-        // relies on the implicit strong capture — acceptable for a one-shot
-        // completion handler that fires and is released immediately after.
-        windowController.currentEditorContent { latest in
-            if let latest {
-                self.text = latest
+        super.save(to: url, ofType: typeName, for: saveOperation) { error in
+            if error == nil {
+                self.lastKnownDiskRevision = RevisionHash(contentBytes: Data(self.text.utf8))
+                self.watchFile(at: url)
+                self.editorWindowController?.setCannotShareReason(nil)
             }
-            super.save(to: url, ofType: typeName, for: saveOperation) { error in
-                if error == nil {
-                    self.lastKnownDiskRevision = RevisionHash(contentBytes: Data(self.text.utf8))
-                    self.watchFile(at: url)
-                    windowController.setCannotShareReason(nil)
-                }
-                completionHandler(error)
-            }
+            completionHandler(error)
         }
     }
 

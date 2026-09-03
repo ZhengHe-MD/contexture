@@ -40,6 +40,35 @@ import Testing
         #expect(!doc.isDocumentEdited)
     }
 
+    @Test @MainActor func repeatedSaveActionsDoNotBlockTheMainThread() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("contexture-repeated-save-\(UUID().uuidString).md")
+        try Data("before".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let doc = MarkdownDocument()
+        let controller = EditorWindowController(frameAutosaveName: nil)
+        doc.addWindowController(controller)
+        controller.windowDidLoad()
+        doc.fileURL = url
+        doc.fileType = "md"
+        doc.updateText("after")
+        defer {
+            doc.removeWindowController(controller)
+            controller.close()
+        }
+
+        // A second Command-S can arrive before WebKit answers the first
+        // save's asynchronous content query. It must not synchronously wait
+        // for a completion that itself needs the blocked main thread.
+        let started = Date()
+        doc.save(nil)
+        doc.save(nil)
+        let elapsed = Date().timeIntervalSince(started)
+
+        #expect(elapsed < 1)
+    }
+
     private func selectionChange(text: String = "hello") -> EditorSelectionChange {
         EditorSelectionChange(text: text, byteStart: 0, byteEnd: text.utf8.count, line: 1, column: 1)
     }
