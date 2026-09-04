@@ -43,6 +43,12 @@ not optional: GFM permits raw HTML inside a Document, so a Document
 containing a remote image would otherwise turn the Preview into a beacon
 reporting when the writer opened the file.
 
+Relative raster-image paths are resolved against the Markdown Document by the
+native Preview builder, capped, read from disk, and replaced with `data:` URLs
+before the isolated Preview document is constructed. The iframe never receives
+file access, and absolute paths, remote URLs, unsupported formats, missing
+files, and oversized files remain blocked by the same CSP.
+
 This decision should be revisited after a week of real writing. If the missing
 text replacement is a daily irritation, the editor pane moves to `NSTextView`
 and the Selection mapping layer becomes the accepted cost.
