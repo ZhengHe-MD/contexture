@@ -21,6 +21,7 @@ import {
   svgDataURL,
 } from "./mermaidPreview.js";
 import { parseMarkdownDocument } from "./markdownDocument.js";
+import { pollPreviewSelection } from "./previewSelection.js";
 
 // Bridge protocol with the native shell (see Sources/ContextureApp/EditorBridge.swift):
 //   JS -> native: window.webkit.messageHandlers.contexture.postMessage({ type, ... })
@@ -479,6 +480,9 @@ new ResizeObserver(() => {
 
 window.__contexture_setPreviewHTML = function setPreviewHTML(html) {
   closeDiagramViewer();
+  // Replacing the iframe destroys its native Selection. Do not mistake that
+  // programmatic collapse for a writer click on the next polling tick.
+  lastPreviewSelectionPoint = null;
   let scrollY = 0;
   try {
     scrollY = previewFrame.contentWindow ? previewFrame.contentWindow.scrollY : 0;
@@ -624,10 +628,9 @@ function nearestDataSrcElement(node, previewDocument) {
 /// selection into byteStart/byteEnd/line/column, post it to native, and
 /// re-highlight the Preview — all of that fires unchanged, so nothing here
 /// duplicates it.
-function handlePreviewSelectionChanged(selection) {
+function handlePreviewSelectionChanged(domRange) {
   const previewDocument = previewFrame.contentDocument;
   if (!previewDocument) return;
-  const domRange = selection.getRangeAt(0);
   const startElement = nearestDataSrcElement(domRange.startContainer, previewDocument);
   const endElement = nearestDataSrcElement(domRange.endContainer, previewDocument);
   if (!startElement || !endElement) return;
@@ -662,18 +665,19 @@ function handlePreviewSelectionChanged(selection) {
   if (from >= to) return;
 
   view.dispatch({ selection: EditorSelection.range(from, to), scrollIntoView: true });
+}
 
-  // Clear the writer's raw, un-snapped native Preview selection so the
-  // pane shows only the canonical (snapped) highlight — reapplied a moment
-  // later by the dispatch above's own selectionSet handling — rather than
-  // both the rough drag and the snapped range at once.
-  try {
-    selection.removeAllRanges();
-  } catch {
-    // Best-effort cosmetic cleanup; leaving the raw selection visible
-    // alongside the highlight is a degraded but harmless outcome.
+// A collapsed native Preview range means the writer clicked instead of
+// dragging. Mirror that collapse into CodeMirror so both panes stop showing
+// a visible Selection. Native receives no selectionChanged message for this
+// empty range, so the previously Armed snapshot deliberately remains Armed.
+function collapseVisibleSelection() {
+  const range = view.state.selection.main;
+  if (range.empty) {
+    clearPreviewHighlight();
+    return;
   }
-  lastPreviewSelectionPoint = null;
+  view.dispatch({ selection: EditorSelection.cursor(range.head) });
 }
 
 // Detecting a Preview selection is NOT event-driven. This was verified
@@ -703,28 +707,10 @@ function previewSelectionPollTick() {
   } catch {
     return;
   }
-  if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
-    lastPreviewSelectionPoint = null;
-    return;
-  }
-  const domRange = selection.getRangeAt(0);
-  const current = {
-    startContainer: domRange.startContainer,
-    startOffset: domRange.startOffset,
-    endContainer: domRange.endContainer,
-    endOffset: domRange.endOffset,
-  };
-  if (
-    lastPreviewSelectionPoint &&
-    lastPreviewSelectionPoint.startContainer === current.startContainer &&
-    lastPreviewSelectionPoint.startOffset === current.startOffset &&
-    lastPreviewSelectionPoint.endContainer === current.endContainer &&
-    lastPreviewSelectionPoint.endOffset === current.endOffset
-  ) {
-    return; // Unchanged since the last tick — nothing to do.
-  }
-  lastPreviewSelectionPoint = current;
-  handlePreviewSelectionChanged(selection);
+  lastPreviewSelectionPoint = pollPreviewSelection(selection, lastPreviewSelectionPoint, {
+    onRangeChanged: handlePreviewSelectionChanged,
+    onCollapsed: collapseVisibleSelection,
+  });
 }
 
 // A fixed, lightweight timer rather than anything tied to Document size or
