@@ -22,6 +22,7 @@ import {
 } from "./mermaidPreview.js";
 import { parseMarkdownDocument } from "./markdownDocument.js";
 import { pollPreviewSelection } from "./previewSelection.js";
+import { createScrollMap } from "./scrollSync.js";
 
 // Bridge protocol with the native shell (see Sources/ContextureApp/EditorBridge.swift):
 //   JS -> native: window.webkit.messageHandlers.contexture.postMessage({ type, ... })
@@ -198,6 +199,7 @@ let previewDebounceTimer = null;
 let previewRenderID = 0;
 
 function schedulePreviewRender() {
+  scrollMap = null;
   const scheduledID = ++previewRenderID;
   const document = parseMarkdownDocument(view.state.doc.toString());
   postToNative({ type: "documentMetadataChanged", title: document.title });
@@ -326,6 +328,115 @@ const diagramViewerZoomOut = document.getElementById("diagram-viewer-zoom-out");
 const diagramViewerFit = document.getElementById("diagram-viewer-fit");
 const diagramViewerZoomIn = document.getElementById("diagram-viewer-zoom-in");
 const diagramViewerClose = document.getElementById("diagram-viewer-close");
+
+// --- Synchronized scrolling ---
+//
+// `data-src` already gives both panes a shared Document coordinate: Source
+// line ranges. We turn the start of each stamped Preview block into a pair of
+// pixel anchors, then interpolate between them. This keeps headings, lists,
+// tables, images, and Diagrams aligned much more closely than equating the
+// panes' raw scroll percentages, while the endpoint anchors still provide a
+// safe proportional fallback for unstamped/raw-HTML regions.
+const PREVIEW_SCROLL_POLL_MS = 50;
+const SCROLL_SYNC_TOLERANCE = 1;
+let scrollMap = null;
+let sourceScrollFrame = null;
+let lastPreviewScrollY = 0;
+let expectedSourceScrollTop = null;
+let expectedPreviewScrollY = null;
+
+function previewScrollY() {
+  try {
+    return previewFrame.contentWindow?.scrollY ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+function previewMaximumScroll() {
+  const previewDocument = previewFrame.contentDocument;
+  const previewWindow = previewFrame.contentWindow;
+  if (!previewDocument || !previewWindow) return 0;
+  const contentHeight = Math.max(
+    previewDocument.documentElement?.scrollHeight ?? 0,
+    previewDocument.body?.scrollHeight ?? 0
+  );
+  return Math.max(0, contentHeight - previewWindow.innerHeight);
+}
+
+function currentScrollMap() {
+  if (scrollMap) return scrollMap;
+  const previewDocument = previewFrame.contentDocument;
+  if (!previewDocument?.body) return null;
+
+  const previewY = previewScrollY();
+  const anchors = [];
+  for (const element of previewDocument.querySelectorAll("[data-src]")) {
+    const range = parseBlockRange(element.getAttribute("data-src"));
+    const lineNumber = range ? range.start + 1 : 0;
+    if (lineNumber < 1 || lineNumber > view.state.doc.lines) continue;
+    const sourcePosition = view.state.doc.line(lineNumber).from;
+    anchors.push({
+      source: view.lineBlockAt(sourcePosition).top + view.documentPadding.top,
+      preview: element.getBoundingClientRect().top + previewY,
+    });
+  }
+
+  scrollMap = createScrollMap({
+    sourceMax: Math.max(0, view.scrollDOM.scrollHeight - view.scrollDOM.clientHeight),
+    previewMax: previewMaximumScroll(),
+    anchors,
+  });
+  return scrollMap;
+}
+
+function syncPreviewFromSource() {
+  sourceScrollFrame = null;
+  const map = currentScrollMap();
+  const previewWindow = previewFrame.contentWindow;
+  if (!map || !previewWindow) return;
+  const target = map.sourceToPreview(view.scrollDOM.scrollTop);
+  expectedPreviewScrollY = target;
+  previewWindow.scrollTo(0, target);
+}
+
+function sourceDidScroll() {
+  const current = view.scrollDOM.scrollTop;
+  if (
+    expectedSourceScrollTop !== null
+    && Math.abs(current - expectedSourceScrollTop) <= SCROLL_SYNC_TOLERANCE
+  ) {
+    expectedSourceScrollTop = null;
+    return;
+  }
+  expectedSourceScrollTop = null;
+  if (sourceScrollFrame === null) {
+    sourceScrollFrame = requestAnimationFrame(syncPreviewFromSource);
+  }
+}
+
+function previewScrollPollTick() {
+  const current = previewScrollY();
+  if (Math.abs(current - lastPreviewScrollY) <= SCROLL_SYNC_TOLERANCE) return;
+  lastPreviewScrollY = current;
+  if (
+    expectedPreviewScrollY !== null
+    && Math.abs(current - expectedPreviewScrollY) <= SCROLL_SYNC_TOLERANCE
+  ) {
+    expectedPreviewScrollY = null;
+    return;
+  }
+  expectedPreviewScrollY = null;
+
+  const map = currentScrollMap();
+  if (!map) return;
+  const target = map.previewToSource(current);
+  expectedSourceScrollTop = target;
+  view.scrollDOM.scrollTo({ top: target, behavior: "auto" });
+}
+
+view.scrollDOM.addEventListener("scroll", sourceDidScroll, { passive: true });
+setInterval(previewScrollPollTick, PREVIEW_SCROLL_POLL_MS);
 
 const DIAGRAM_ZOOM_STEP = 1.25;
 const DIAGRAM_MIN_ZOOM = 0.1;
@@ -468,6 +579,7 @@ diagramViewer.addEventListener("close", () => {
 });
 
 new ResizeObserver(() => {
+  scrollMap = null;
   const viewerWasFit = diagramViewerState
     && Math.abs(diagramViewerState.scale - diagramViewerState.fitScale) < 0.001;
   const previewDocument = previewFrame.contentDocument;
@@ -497,6 +609,9 @@ window.__contexture_setPreviewHTML = function setPreviewHTML(html) {
       // Best-effort only: a failure here leaves the Preview scrolled to the
       // top of the new content, which is a degraded but safe outcome.
     }
+    lastPreviewScrollY = previewScrollY();
+    expectedPreviewScrollY = null;
+    scrollMap = null;
     // The reload just replaced every element in the iframe document,
     // including whatever this module previously added the highlight class
     // to — reapply it (against the freshly stamped `data-src` elements) for
@@ -506,6 +621,7 @@ window.__contexture_setPreviewHTML = function setPreviewHTML(html) {
       applyPreviewHighlightForSelection(range);
     }
     configurePreviewDiagramInteractions();
+    requestAnimationFrame(syncPreviewFromSource);
   };
   previewFrame.addEventListener("load", restoreScroll);
   previewFrame.srcdoc = html;

@@ -74,6 +74,8 @@ persistent count of Armed snapshots and offers a single-key clear.
   then remember the size the writer chooses.
 - Keep the Source and Preview as a full-height split view; the divider runs
   continuously from the top of the content area to the bottom.
+- Keep vertical scrolling synchronized in both directions so the other pane
+  follows the same part of the Document when the writer focuses on one pane.
 - Keep leading YAML front matter in the Source but omit it from the Preview.
   When it contains a non-empty string `title`, show that title in the native
   window chrome; otherwise use the Document's filename.
@@ -133,7 +135,8 @@ release.
 The first product should include:
 
 - a native macOS editor shell around a CodeMirror 6 editor and Preview;
-- Source plus rendered Preview with synchronized Selection;
+- Source plus rendered Preview with synchronized Selection and vertical
+  scrolling;
 - static rendering of lowercase `mermaid` fenced blocks, with an accessible
   name and a local inline error for invalid Diagram Source;
 - local-file opening, safe autosave, and flush-on-publish;
