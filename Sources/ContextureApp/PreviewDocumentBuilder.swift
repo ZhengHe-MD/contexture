@@ -13,9 +13,17 @@ import Foundation
 /// fetch — image, stylesheet, font, media, frame, XHR/fetch, prefetch, form
 /// submission — from any origin other than `data:` (inline images) and
 /// inline `<style>`/`style=` (this document's own table/code-block CSS).
-/// `PreviewSanitizer` is applied on top as defense in depth; see its doc
-/// comment for why that ordering is deliberate.
+/// Before the CSP is applied, supported local raster images whose `src` is
+/// relative to the Markdown Document are read from disk and converted to
+/// `data:` URLs. This preserves the no-file/no-network runtime boundary while
+/// making ordinary Markdown image paths useful. `PreviewSanitizer` is applied
+/// on top as defense in depth; see its doc comment for why that ordering is
+/// deliberate.
 enum PreviewDocumentBuilder {
+    /// A Preview is rebuilt frequently while typing, so do not let one image
+    /// turn every keystroke into an unbounded file read and base64 allocation.
+    static let maximumLocalImageBytes = 25 * 1_024 * 1_024
+
     /// Every directive is listed explicitly rather than relying on
     /// `default-src` to cover it, because two directives — `form-action`
     /// and `base-uri` — do **not** fall back to `default-src` per the CSP
@@ -73,8 +81,9 @@ enum PreviewDocumentBuilder {
     /// so it preserves raw HTML the way real GFM does) — this function is
     /// the one place that both sanitizes it and puts it inside the CSP
     /// boundary above, so no caller can forget either step.
-    static func buildDocument(bodyHTML: String) -> String {
-        let sanitized = PreviewSanitizer.sanitize(bodyHTML)
+    static func buildDocument(bodyHTML: String, documentURL: URL? = nil) -> String {
+        let withLocalImages = inlineLocalImages(in: bodyHTML, documentURL: documentURL)
+        let sanitized = PreviewSanitizer.sanitize(withLocalImages)
         return """
         <!doctype html>
         <html>
@@ -86,5 +95,128 @@ enum PreviewDocumentBuilder {
         <body>\(sanitized)</body>
         </html>
         """
+    }
+
+    private static let imageTagExpression = try! NSRegularExpression(
+        pattern: #"<img\b[^>]*>"#,
+        options: [.caseInsensitive]
+    )
+
+    private static let sourceAttributeExpression = try! NSRegularExpression(
+        pattern: #"\ssrc\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s\"'=<>`]+))"#,
+        options: [.caseInsensitive]
+    )
+
+    private static let supportedRasterMIMETypes = [
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "gif": "image/gif",
+        "webp": "image/webp",
+        "avif": "image/avif",
+        "bmp": "image/bmp",
+        "tif": "image/tiff",
+        "tiff": "image/tiff",
+        "heic": "image/heic",
+        "heif": "image/heif",
+        "ico": "image/x-icon",
+    ]
+
+    /// Rewrites only relative `src` values on `<img>` elements. Absolute
+    /// paths, file URLs, remote URLs, protocol-relative URLs, unsupported
+    /// formats, missing files, directories, and oversized files remain
+    /// untouched and are therefore blocked by the Preview CSP.
+    private static func inlineLocalImages(in html: String, documentURL: URL?) -> String {
+        guard let documentURL, documentURL.isFileURL else { return html }
+
+        var result = html
+        let fullRange = NSRange(result.startIndex..<result.endIndex, in: result)
+        let matches = imageTagExpression.matches(in: result, range: fullRange)
+
+        // Work backwards so replacing one tag cannot invalidate the ranges of
+        // tags that precede it in the HTML string.
+        for match in matches.reversed() {
+            guard let tagRange = Range(match.range, in: result) else { continue }
+            let tag = String(result[tagRange])
+            let sourceRange = NSRange(tag.startIndex..<tag.endIndex, in: tag)
+            guard let sourceMatch = sourceAttributeExpression.firstMatch(in: tag, range: sourceRange),
+                  let valueRange = (1...3)
+                    .map({ sourceMatch.range(at: $0) })
+                    .first(where: { $0.location != NSNotFound }),
+                  let swiftValueRange = Range(valueRange, in: tag) else { continue }
+
+            let reference = decodeHTMLEntities(String(tag[swiftValueRange]))
+            guard let dataURL = localImageDataURL(
+                for: reference,
+                relativeTo: documentURL.deletingLastPathComponent()
+            ) else { continue }
+
+            var rewrittenTag = tag
+            rewrittenTag.replaceSubrange(swiftValueRange, with: dataURL)
+            result.replaceSubrange(tagRange, with: rewrittenTag)
+        }
+
+        return result
+    }
+
+    private static func localImageDataURL(for reference: String, relativeTo directoryURL: URL) -> String? {
+        guard !reference.isEmpty,
+              !reference.hasPrefix("/"),
+              !reference.hasPrefix("\\"),
+              let components = URLComponents(string: reference),
+              components.scheme == nil,
+              components.host == nil,
+              !components.path.isEmpty else { return nil }
+
+        let decodedPath = components.percentEncodedPath.removingPercentEncoding ?? components.path
+        guard !decodedPath.hasPrefix("/"), !decodedPath.hasPrefix("\\") else { return nil }
+        let fileURL = URL(fileURLWithPath: decodedPath, relativeTo: directoryURL).standardizedFileURL
+        guard let mimeType = supportedRasterMIMETypes[fileURL.pathExtension.lowercased()],
+              let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+              values.isRegularFile == true,
+              let fileSize = values.fileSize,
+              fileSize <= maximumLocalImageBytes,
+              let data = try? Data(contentsOf: fileURL, options: [.mappedIfSafe]),
+              data.count <= maximumLocalImageBytes else { return nil }
+
+        return "data:\(mimeType);base64,\(data.base64EncodedString())"
+    }
+
+    /// Markdown renderers entity-escape attribute values. Decode the small
+    /// HTML entity set that can occur in a filesystem path before resolving
+    /// it, including numeric entities used for non-ASCII punctuation.
+    private static func decodeHTMLEntities(_ value: String) -> String {
+        var result = value
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&apos;", with: "'")
+            .replacingOccurrences(of: "&#39;", with: "'")
+
+        let numericEntity = try! NSRegularExpression(
+            pattern: #"&#(?:x([0-9a-fA-F]+)|([0-9]+));"#
+        )
+        let matches = numericEntity.matches(
+            in: result,
+            range: NSRange(result.startIndex..<result.endIndex, in: result)
+        )
+        for match in matches.reversed() {
+            guard let entityRange = Range(match.range, in: result) else { continue }
+            let hexadecimalRange = match.range(at: 1)
+            let decimalRange = match.range(at: 2)
+            let radix: Int
+            let digitsRange: NSRange
+            if hexadecimalRange.location != NSNotFound {
+                radix = 16
+                digitsRange = hexadecimalRange
+            } else {
+                radix = 10
+                digitsRange = decimalRange
+            }
+            guard let swiftDigitsRange = Range(digitsRange, in: result),
+                  let scalarValue = UInt32(result[swiftDigitsRange], radix: radix),
+                  let scalar = UnicodeScalar(scalarValue) else { continue }
+            result.replaceSubrange(entityRange, with: String(scalar))
+        }
+        return result
     }
 }

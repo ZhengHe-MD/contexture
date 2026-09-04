@@ -155,6 +155,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             self?.setFrontMatterTitle(title)
         }
         if let markdownDocument = document as? MarkdownDocument {
+            editorViewController.documentURLProvider = { [weak markdownDocument] in
+                markdownDocument?.fileURL
+            }
             editorViewController.load(initialText: markdownDocument.text)
             let armedIndicator = ArmedIndicatorViewController(
                 documentID: markdownDocument.documentID,

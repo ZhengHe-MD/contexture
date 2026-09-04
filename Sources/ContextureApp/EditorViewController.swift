@@ -23,6 +23,9 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
     var onContentChanged: ((String) -> Void)?
     var onSelectionChanged: ((EditorSelectionChange) -> Void)?
     var onDocumentTitleChanged: ((String?) -> Void)?
+    /// Read at Preview-build time rather than copied once at initial load so
+    /// Save As immediately changes how relative image paths are resolved.
+    var documentURLProvider: (() -> URL?)?
 
     init() {
         let configuration = WKWebViewConfiguration()
@@ -123,7 +126,10 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
     /// rather than living only in editor-web where this project has no
     /// equivalent headless test setup.
     func editorBridgePreviewHTMLDidChange(_ html: String) {
-        let document = PreviewDocumentBuilder.buildDocument(bodyHTML: html)
+        let document = PreviewDocumentBuilder.buildDocument(
+            bodyHTML: html,
+            documentURL: documentURLProvider?()
+        )
         guard let payload = try? JSONEncoder().encode(document),
               let json = String(data: payload, encoding: .utf8) else { return }
         webView.evaluateJavaScript("window.__contexture_setPreviewHTML(\(json))")

@@ -51,6 +51,80 @@ import Testing
         #expect(document.contains("data:image/png;base64,AAAA"))
     }
 
+    @Test func inlinesImagePathsRelativeToTheMarkdownDocument() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("contexture-preview-\(UUID().uuidString)", isDirectory: true)
+        let assets = directory.appendingPathComponent("assets", isDirectory: true)
+        try FileManager.default.createDirectory(at: assets, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let imageURL = assets.appendingPathComponent("pixel.png")
+        try Data([0x01, 0x02, 0x03]).write(to: imageURL)
+        let markdownURL = directory.appendingPathComponent("notes.md")
+
+        let document = PreviewDocumentBuilder.buildDocument(
+            bodyHTML: #"<p><img src="assets/pixel.png" alt="pixel"></p>"#,
+            documentURL: markdownURL
+        )
+
+        #expect(document.contains(#"src="data:image/png;base64,AQID""#))
+        #expect(!document.contains(#"src="assets/pixel.png""#))
+    }
+
+    @Test func keepsNonLocalAndAlreadyInlinedImageSourcesForTheCSPToHandle() {
+        let markdownURL = URL(fileURLWithPath: "/tmp/notes.md")
+        let sources = [
+            "https://example.com/pixel.png",
+            "//example.com/pixel.png",
+            "/tmp/pixel.png",
+            "file:///tmp/pixel.png",
+            "data:image/png;base64,AQID",
+        ]
+
+        for source in sources {
+            let bodyHTML = #"<p><img src="\#(source)" alt="pixel"></p>"#
+            let document = PreviewDocumentBuilder.buildDocument(
+                bodyHTML: bodyHTML,
+                documentURL: markdownURL
+            )
+            #expect(document.contains(#"src="\#(source)""#), "\(source)")
+        }
+    }
+
+    @Test func leavesMissingAndUnsupportedRelativeImagesBlocked() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("contexture-preview-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        try Data("<svg/>".utf8).write(to: directory.appendingPathComponent("diagram.svg"))
+        let markdownURL = directory.appendingPathComponent("notes.md")
+        let bodyHTML = #"<img src="missing.png"><img src="diagram.svg">"#
+        let document = PreviewDocumentBuilder.buildDocument(
+            bodyHTML: bodyHTML,
+            documentURL: markdownURL
+        )
+
+        #expect(document.contains(#"src="missing.png""#))
+        #expect(document.contains(#"src="diagram.svg""#))
+    }
+
+    @Test func doesNotConfuseDataSourceWithTheImageSource() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("contexture-preview-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        try Data([0x01, 0x02, 0x03]).write(to: directory.appendingPathComponent("pixel.png"))
+        let document = PreviewDocumentBuilder.buildDocument(
+            bodyHTML: #"<img data-src="1-2" src="pixel.png">"#,
+            documentURL: directory.appendingPathComponent("notes.md")
+        )
+
+        #expect(document.contains(#"data-src="1-2""#))
+        #expect(document.contains(#"src="data:image/png;base64,AQID""#))
+    }
+
     @Test func preservesInertMermaidImagesAndTheirAtomicSourceRange() {
         let bodyHTML = """
         <figure class="contexture-mermaid" data-src="2-6">
