@@ -10,7 +10,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private static let initialScreenAreaFraction: CGFloat = 2.0 / 3.0
     private static let frameAutosaveName = "ContextureEditorWindow.v6"
 
-    private let editorViewController = EditorViewController()
+    private let editorViewController: EditorViewController
     private lazy var viewModeAccessory = ViewModeAccessoryViewController(
         initialMode: editorViewController.currentViewMode
     )
@@ -23,6 +23,16 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     convenience init(frameAutosaveName: String?) {
+        self.init(frameAutosaveName: frameAutosaveName, userDefaults: .standard)
+    }
+
+    convenience init(frameAutosaveName: String?, userDefaults: UserDefaults) {
+        let editorViewController = EditorViewController(userDefaults: userDefaults)
+        self.init(frameAutosaveName: frameAutosaveName, editorViewController: editorViewController)
+    }
+
+    init(frameAutosaveName: String?, editorViewController: EditorViewController) {
+        self.editorViewController = editorViewController
         let targetScreen = NSScreen.main
         let contentSize = Self.defaultContentSize(
             for: targetScreen?.visibleFrame.size
@@ -33,7 +43,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        self.init(window: window)
+        super.init(window: window)
 
         // Installing a content view controller replaces the window's content
         // view and adopts that view's zero intrinsic size. Do it before frame
@@ -60,6 +70,11 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             // resizing wins.
             window.setFrameAutosaveName(frameAutosaveName)
         }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
     }
 
     func windowDidBecomeKey(_ notification: Notification) {

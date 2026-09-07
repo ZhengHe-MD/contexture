@@ -20,7 +20,8 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
     private let messageHandler = EditorBridgeMessageHandler()
     private var pendingInitialText: String?
     private var isReady = false
-    private(set) var currentViewMode: ViewMode = ViewMode.userDefault
+    private let userDefaults: UserDefaults
+    private(set) var currentViewMode: ViewMode
 
     var onContentChanged: ((String) -> Void)?
     var onSelectionChanged: ((EditorSelectionChange) -> Void)?
@@ -29,7 +30,9 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
     /// Save As immediately changes how relative image paths are resolved.
     var documentURLProvider: (() -> URL?)?
 
-    init() {
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
+        self.currentViewMode = ViewMode.preferred(in: userDefaults)
         let configuration = WKWebViewConfiguration()
         let contentController = WKUserContentController()
         configuration.userContentController = contentController
@@ -101,7 +104,7 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
     func setViewMode(_ mode: ViewMode, persistAsDefault: Bool = true) {
         currentViewMode = mode
         if persistAsDefault {
-            ViewMode.userDefault = mode
+            ViewMode.setPreferred(mode, in: userDefaults)
         }
         if isReady {
             guard let payload = try? JSONEncoder().encode(mode.rawValue),

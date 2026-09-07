@@ -121,15 +121,21 @@ import Testing
     }
 
     @Test @MainActor func viewModeActionsSwitchAndValidateMenuItems() throws {
-        UserDefaults.standard.removeObject(forKey: ViewMode.userDefaultsKey)
+        let suiteName = "ContextureApp.EditorWindowControllerTests.\(UUID().uuidString)"
+        let isolatedDefaults = UserDefaults(suiteName: suiteName)!
+        isolatedDefaults.removePersistentDomain(forName: suiteName)
+
         let document = MarkdownDocument()
-        let controller = EditorWindowController(frameAutosaveName: nil)
+        let controller = EditorWindowController(
+            frameAutosaveName: nil,
+            userDefaults: isolatedDefaults
+        )
         document.addWindowController(controller)
         controller.windowDidLoad()
         defer {
             document.removeWindowController(controller)
             controller.close()
-            UserDefaults.standard.removeObject(forKey: ViewMode.userDefaultsKey)
+            isolatedDefaults.removePersistentDomain(forName: suiteName)
         }
 
         #expect(controller.currentViewMode == .previewOnly)
@@ -146,7 +152,7 @@ import Testing
 
         controller.selectSplitViewMode(nil)
         #expect(controller.currentViewMode == .split)
-        #expect(ViewMode.userDefault == .split)
+        #expect(ViewMode.preferred(in: isolatedDefaults) == .split)
 
         _ = controller.validateMenuItem(previewItem)
         _ = controller.validateMenuItem(splitItem)
@@ -155,7 +161,7 @@ import Testing
 
         controller.toggleViewMode(nil)
         #expect(controller.currentViewMode == .previewOnly)
-        #expect(ViewMode.userDefault == .previewOnly)
+        #expect(ViewMode.preferred(in: isolatedDefaults) == .previewOnly)
 
         _ = controller.validateMenuItem(previewItem)
         _ = controller.validateMenuItem(splitItem)
