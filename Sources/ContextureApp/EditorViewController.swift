@@ -1,5 +1,6 @@
 import AppKit
 import WebKit
+import ContextureKit
 
 /// Hosts the Source and Preview panes side by side in one `WKWebView`, per
 /// ADR-0002 ("the split divider is CSS inside the web view rather than an
@@ -19,6 +20,7 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
     private let messageHandler = EditorBridgeMessageHandler()
     private var pendingInitialText: String?
     private var isReady = false
+    private(set) var currentViewMode: ViewMode = ViewMode.userDefault
 
     var onContentChanged: ((String) -> Void)?
     var onSelectionChanged: ((EditorSelectionChange) -> Void)?
@@ -96,10 +98,23 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
         webView.evaluateJavaScript("window.__contexture_setContent(\(json))")
     }
 
+    func setViewMode(_ mode: ViewMode, persistAsDefault: Bool = true) {
+        currentViewMode = mode
+        if persistAsDefault {
+            ViewMode.userDefault = mode
+        }
+        if isReady {
+            guard let payload = try? JSONEncoder().encode(mode.rawValue),
+                  let json = String(data: payload, encoding: .utf8) else { return }
+            webView.evaluateJavaScript("window.__contexture_setViewMode(\(json))")
+        }
+    }
+
     // MARK: EditorBridgeDelegate
 
     func editorBridgeDidBecomeReady() {
         isReady = true
+        setViewMode(currentViewMode, persistAsDefault: false)
         if let text = pendingInitialText {
             setContent(text)
             pendingInitialText = nil

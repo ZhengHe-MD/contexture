@@ -1,4 +1,5 @@
 import AppKit
+import ContextureKit
 
 /// One window per open Document, standard macOS chrome and traffic-light
 /// placement (docs/product.md "Writing experience").
@@ -10,6 +11,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private static let frameAutosaveName = "ContextureEditorWindow.v6"
 
     private let editorViewController = EditorViewController()
+    private lazy var viewModeAccessory = ViewModeAccessoryViewController(
+        initialMode: editorViewController.currentViewMode
+    )
     private var frontMatterTitle: String?
     private var hasCompletedInitialFrameCheck = false
     private var isRepairingLegacyMinimumFrame = false
@@ -154,6 +158,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         editorViewController.onDocumentTitleChanged = { [weak self] title in
             self?.setFrontMatterTitle(title)
         }
+        viewModeAccessory.onModeSelected = { [weak self] mode in
+            self?.setViewMode(mode)
+        }
         if let markdownDocument = document as? MarkdownDocument {
             editorViewController.documentURLProvider = { [weak markdownDocument] in
                 markdownDocument?.fileURL
@@ -164,7 +171,30 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
                 bridgeServer: AppServices.bridgeServer
             )
             window?.addTitlebarAccessoryViewController(armedIndicator)
+            window?.addTitlebarAccessoryViewController(viewModeAccessory)
         }
+    }
+
+    var currentViewMode: ViewMode {
+        editorViewController.currentViewMode
+    }
+
+    func setViewMode(_ mode: ViewMode) {
+        editorViewController.setViewMode(mode)
+        viewModeAccessory.updateSelectedMode(mode)
+    }
+
+    @objc func selectPreviewOnlyViewMode(_ sender: Any?) {
+        setViewMode(.previewOnly)
+    }
+
+    @objc func selectSplitViewMode(_ sender: Any?) {
+        setViewMode(.split)
+    }
+
+    @objc func toggleViewMode(_ sender: Any?) {
+        let nextMode: ViewMode = currentViewMode == .previewOnly ? .split : .previewOnly
+        setViewMode(nextMode)
     }
 
     /// Pushes text into the editor surface without marking the Document
@@ -182,5 +212,22 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     /// not "is a Selection Armed right now."
     func setCannotShareReason(_ reason: String?) {
         window?.subtitle = reason ?? ""
+    }
+}
+
+extension EditorWindowController: NSMenuItemValidation {
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(selectPreviewOnlyViewMode(_:)):
+            menuItem.state = currentViewMode == .previewOnly ? .on : .off
+            return true
+        case #selector(selectSplitViewMode(_:)):
+            menuItem.state = currentViewMode == .split ? .on : .off
+            return true
+        case #selector(toggleViewMode(_:)):
+            return true
+        default:
+            return true
+        }
     }
 }

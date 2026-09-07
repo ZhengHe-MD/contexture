@@ -76,3 +76,16 @@ _Avoid_: Sync mode, agent mode
 **Consumption**:
 The successful addition of Selection Context to an Agent Host turn.
 _Avoid_: Detection, send
+
+**View Mode**:
+The active presentation layout of a Document window: Preview Only or Split View.
+_Avoid_: Display mode, layout style, panel view
+
+**Preview Only**:
+The View Mode that presents only the Preview pane while keeping Selection and Diagram interactions active.
+_Avoid_: Read-only view, render view, viewer mode
+
+**Split View**:
+The View Mode that presents the Source and Preview panes side by side with synchronized scrolling and Selection.
+_Avoid_: Dual pane, side-by-side view
+

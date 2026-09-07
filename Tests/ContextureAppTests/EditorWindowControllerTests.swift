@@ -1,4 +1,5 @@
 import AppKit
+import ContextureKit
 import Testing
 @testable import ContextureApp
 
@@ -118,4 +119,48 @@ import Testing
             )
         }
     }
+
+    @Test @MainActor func viewModeActionsSwitchAndValidateMenuItems() throws {
+        UserDefaults.standard.removeObject(forKey: ViewMode.userDefaultsKey)
+        let document = MarkdownDocument()
+        let controller = EditorWindowController(frameAutosaveName: nil)
+        document.addWindowController(controller)
+        controller.windowDidLoad()
+        defer {
+            document.removeWindowController(controller)
+            controller.close()
+            UserDefaults.standard.removeObject(forKey: ViewMode.userDefaultsKey)
+        }
+
+        #expect(controller.currentViewMode == .previewOnly)
+
+        let previewItem = NSMenuItem(title: "Preview Only", action: #selector(EditorWindowController.selectPreviewOnlyViewMode(_:)), keyEquivalent: "")
+        let splitItem = NSMenuItem(title: "Split View", action: #selector(EditorWindowController.selectSplitViewMode(_:)), keyEquivalent: "")
+        let toggleItem = NSMenuItem(title: "Toggle View Mode", action: #selector(EditorWindowController.toggleViewMode(_:)), keyEquivalent: "")
+
+        #expect(controller.validateMenuItem(previewItem))
+        #expect(previewItem.state == .on)
+        #expect(controller.validateMenuItem(splitItem))
+        #expect(splitItem.state == .off)
+        #expect(controller.validateMenuItem(toggleItem))
+
+        controller.selectSplitViewMode(nil)
+        #expect(controller.currentViewMode == .split)
+        #expect(ViewMode.userDefault == .split)
+
+        _ = controller.validateMenuItem(previewItem)
+        _ = controller.validateMenuItem(splitItem)
+        #expect(previewItem.state == .off)
+        #expect(splitItem.state == .on)
+
+        controller.toggleViewMode(nil)
+        #expect(controller.currentViewMode == .previewOnly)
+        #expect(ViewMode.userDefault == .previewOnly)
+
+        _ = controller.validateMenuItem(previewItem)
+        _ = controller.validateMenuItem(splitItem)
+        #expect(previewItem.state == .on)
+        #expect(splitItem.state == .off)
+    }
 }
+

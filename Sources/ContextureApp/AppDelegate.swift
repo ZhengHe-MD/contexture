@@ -74,6 +74,30 @@ enum AppMenuBuilder {
         editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
 
+        let viewMenuItem = NSMenuItem()
+        mainMenu.addItem(viewMenuItem)
+        let viewMenu = NSMenu(title: "View")
+        viewMenuItem.submenu = viewMenu
+        let previewOnlyItem = viewMenu.addItem(
+            withTitle: "Preview Only",
+            action: #selector(EditorWindowController.selectPreviewOnlyViewMode(_:)),
+            keyEquivalent: "1"
+        )
+        previewOnlyItem.keyEquivalentModifierMask = [.command]
+        let splitItem = viewMenu.addItem(
+            withTitle: "Split View",
+            action: #selector(EditorWindowController.selectSplitViewMode(_:)),
+            keyEquivalent: "2"
+        )
+        splitItem.keyEquivalentModifierMask = [.command]
+        viewMenu.addItem(NSMenuItem.separator())
+        let toggleItem = viewMenu.addItem(
+            withTitle: "Toggle View Mode",
+            action: #selector(EditorWindowController.toggleViewMode(_:)),
+            keyEquivalent: "/"
+        )
+        toggleItem.keyEquivalentModifierMask = [.command]
+
         let sharingMenuItem = NSMenuItem()
         mainMenu.addItem(sharingMenuItem)
         let sharingMenu = NSMenu(title: "Sharing")
