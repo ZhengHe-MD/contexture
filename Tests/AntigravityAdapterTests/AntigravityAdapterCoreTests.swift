@@ -85,6 +85,36 @@ import Testing
         #expect(ackedConsumptionID == "conv-789#v1")
     }
 
+    @Test func anHTMLSelectionProducesInjectStepsWithHTMLFormatTag() throws {
+        let data = Data("<p>Hello Antigravity HTML</p>".utf8)
+        let htmlSnap = SelectionSnapshot(
+            documentID: DocumentID(),
+            sourceBytes: data,
+            format: .html,
+            relativePath: "index.html",
+            absolutePath: "/tmp/index.html",
+            revision: RevisionHash(contentBytes: data),
+            byteRange: SourceByteRange(lowerBound: 0, upperBound: data.count),
+            sharingMode: .nextPrompt,
+            createdAt: Date(),
+            sourceWindow: SourceWindowID(),
+            version: 1
+        )
+
+        let output = AntigravityAdapterCore.handle(
+            stdinJSON: stdin(),
+            read: { _, _, _, _ in [htmlSnap] },
+            ack: { _, _ in }
+        )
+
+        let decoded = try #require(try JSONSerialization.jsonObject(with: output) as? [String: Any])
+        let injectSteps = try #require(decoded["injectSteps"] as? [[String: Any]])
+        #expect(injectSteps.count == 1)
+        let ephemeralMessage = injectSteps.first?["ephemeralMessage"] as? String
+        #expect(ephemeralMessage?.contains("<p>Hello Antigravity HTML</p>") == true)
+        #expect(ephemeralMessage?.contains("format: html") == true)
+    }
+
     // MARK: No-content shape — must be `{}`, not "write nothing"
 
     @Test func noArmedSnapshotsProducesAnEmptyObjectWithInjectStepsAbsentAndNoAck() throws {

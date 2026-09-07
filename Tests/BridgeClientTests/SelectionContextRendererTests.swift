@@ -27,6 +27,27 @@ import Testing
         #expect(rendered.contains("some *markdown* text"))
     }
 
+    @Test func renderIncludesHTMLFormatTagForHTMLSnapshot() {
+        let data = Data("<p>html</p>".utf8)
+        let snap = SelectionSnapshot(
+            documentID: DocumentID(),
+            sourceBytes: data,
+            format: .html,
+            relativePath: "index.html",
+            absolutePath: "/tmp/index.html",
+            revision: RevisionHash(contentBytes: data),
+            byteRange: SourceByteRange(lowerBound: 0, upperBound: data.count),
+            sharingMode: .nextPrompt,
+            createdAt: Date(),
+            sourceWindow: SourceWindowID(),
+            version: 1
+        )
+        let rendered = SelectionContextRenderer.render(snap)
+        #expect(rendered.contains("format: html"))
+        #expect(rendered.contains("document: index.html"))
+        #expect(rendered.contains("<p>html</p>"))
+    }
+
     @Test func renderIdentifiesItselfAsDataNotInstructions() {
         let snap = snapshot(text: "irrelevant")
         let rendered = SelectionContextRenderer.render(snap)

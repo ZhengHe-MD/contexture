@@ -67,6 +67,36 @@ import Testing
         #expect(ackedConsumptionID == "turn-123")
     }
 
+    @Test func anHTMLSelectionProducesAdditionalContextWithHTMLFormatTag() throws {
+        let data = Data("<p>Hello HTML</p>".utf8)
+        let htmlSnap = SelectionSnapshot(
+            documentID: DocumentID(),
+            sourceBytes: data,
+            format: .html,
+            relativePath: "index.html",
+            absolutePath: "/tmp/index.html",
+            revision: RevisionHash(contentBytes: data),
+            byteRange: SourceByteRange(lowerBound: 0, upperBound: data.count),
+            sharingMode: .nextPrompt,
+            createdAt: Date(),
+            sourceWindow: SourceWindowID(),
+            version: 1
+        )
+
+        let output = CodexAdapterCore.handle(
+            stdinJSON: stdin(),
+            read: { _, _, _, _ in [htmlSnap] },
+            ack: { _, _ in }
+        )
+
+        let outData = try #require(output)
+        let decoded = try JSONSerialization.jsonObject(with: outData) as? [String: Any]
+        let hookSpecificOutput = decoded?["hookSpecificOutput"] as? [String: Any]
+        let additionalContext = hookSpecificOutput?["additionalContext"] as? String
+        #expect(additionalContext?.contains("<p>Hello HTML</p>") == true)
+        #expect(additionalContext?.contains("format: html") == true)
+    }
+
     @Test func noArmedSnapshotsProducesNilOutputAndNoAck() {
         var ackCalled = false
         let output = CodexAdapterCore.handle(

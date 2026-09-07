@@ -1,6 +1,7 @@
 import { EditorView, basicSetup } from "codemirror";
-import { EditorState, EditorSelection } from "@codemirror/state";
+import { EditorState, EditorSelection, Compartment } from "@codemirror/state";
 import { markdown } from "@codemirror/lang-markdown";
+import { html } from "@codemirror/lang-html";
 import { languages } from "@codemirror/language-data";
 import MarkdownIt from "markdown-it";
 import mermaid from "mermaid";
@@ -23,6 +24,11 @@ import {
 import { parseMarkdownDocument } from "./markdownDocument.js";
 import { pollPreviewSelection } from "./previewSelection.js";
 import { createScrollMap } from "./scrollSync.js";
+import {
+  parseHTMLBlocks,
+  stampHTMLPreview,
+  snapHTMLBlocks,
+} from "./htmlBlockMap.js";
 
 // Bridge protocol with the native shell (see Sources/ContextureApp/EditorBridge.swift):
 //   JS -> native: window.webkit.messageHandlers.contexture.postMessage({ type, ... })
@@ -31,6 +37,8 @@ import { createScrollMap } from "./scrollSync.js";
 //     - { type: "selectionChanged", text, byteStart, byteEnd, line, column }
 //     - { type: "documentMetadataChanged", title }
 //     - { type: "previewHTML", html }
+//     - { type: "previewSelectionUnmappable", reason }
+//     - { type: "previewSelectionMappable" }
 //   native -> JS: evaluateJavaScript of the window.__contexture_* functions below.
 function postToNative(message) {
   if (window.webkit?.messageHandlers?.contexture) {
@@ -56,6 +64,20 @@ function postToNative(message) {
 // risk `PreviewSanitizer`/`PreviewDocumentBuilder` guard against.
 const markdownRenderer = new MarkdownIt({ html: true, linkify: true });
 markdownRenderer.use(stampSourceRanges);
+
+const languageCompartment = new Compartment();
+let currentFormat = "markdown";
+
+function getLanguageExtension(format) {
+  if (format === "html") {
+    return html();
+  }
+  return markdown({ codeLanguages: languages });
+}
+
+let currentHTMLBlocks = [];
+let currentHTMLBlockMap = new Map();
+let currentHTMLAttrName = "data-ctx-id";
 
 // Mermaid itself runs only in this trusted, bundled outer page. Diagram
 // Source never runs: it is parsed with Mermaid's strict security level, the
@@ -174,26 +196,11 @@ async function renderMermaidDiagram(definition, previewID, diagramIndex) {
 }
 
 // Content pushed in from the native side (initial load, external-file reload)
-// must not itself be reported back as a writer edit or a fresh Selection —
-// but the Preview must still reflect it, so preview scheduling below is
-// deliberately NOT gated by this flag.
+// must not itself be reported back as a writer edit or a fresh Selection.
 let suppressChangeNotification = false;
 
 const byteLength = (text) => new TextEncoder().encode(text).length;
 
-// Re-rendering Markdown -> HTML and round-tripping it through native for
-// sanitizing/wrapping on every keystroke would both thrash the Preview
-// (scroll position and any highlighted text move under the mouse) and add
-// pointless work while the writer is mid-word. A short debounce keeps the
-// Preview "live" (issue #4's acceptance criteria) without doing that on
-// every keystroke. The Source -> Preview highlight (issue #5) piggybacks on
-// this same debounce rather than getting its own: it can only be reapplied
-// once new `data-src` elements exist in the reloaded iframe document anyway
-// (see the `load` listener in __contexture_setPreviewHTML below), so there
-// is nothing to gain from recomputing it any more often than the Preview
-// itself re-renders, and doing so keeps this responsive while typing in a
-// large Document (issue #5's explicit acceptance criterion) for the same
-// reason the render debounce already does.
 const PREVIEW_DEBOUNCE_MS = 150;
 let previewDebounceTimer = null;
 let previewRenderID = 0;
@@ -201,7 +208,34 @@ let previewRenderID = 0;
 function schedulePreviewRender() {
   scrollMap = null;
   const scheduledID = ++previewRenderID;
-  const document = parseMarkdownDocument(view.state.doc.toString());
+  const docString = view.state.doc.toString();
+  if (currentFormat === "html") {
+    let title = null;
+    const titleMatch = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(docString);
+    if (titleMatch && titleMatch[1].trim() !== "") {
+      title = titleMatch[1].replace(/\s+/g, " ").trim();
+    }
+    postToNative({ type: "documentMetadataChanged", title });
+
+    const parsed = parseHTMLBlocks(docString);
+    currentHTMLBlocks = parsed.blocks;
+    currentHTMLBlockMap = parsed.blockMap;
+    const renderId = Math.random().toString(36).slice(2, 8);
+    currentHTMLAttrName = `data-ctx-${renderId}`;
+    const stamped = stampHTMLPreview(docString, currentHTMLBlocks, currentHTMLAttrName);
+    if (previewDebounceTimer !== null) {
+      clearTimeout(previewDebounceTimer);
+    }
+    previewDebounceTimer = setTimeout(() => {
+      previewDebounceTimer = null;
+      if (scheduledID === previewRenderID) {
+        postToNative({ type: "previewHTML", html: stamped });
+      }
+    }, PREVIEW_DEBOUNCE_MS);
+    return;
+  }
+
+  const document = parseMarkdownDocument(docString);
   postToNative({ type: "documentMetadataChanged", title: document.title });
   if (previewDebounceTimer !== null) {
     clearTimeout(previewDebounceTimer);
@@ -228,7 +262,7 @@ const view = new EditorView({
     doc: "",
     extensions: [
       basicSetup,
-      markdown({ codeLanguages: languages }),
+      languageCompartment.of(getLanguageExtension(currentFormat)),
       EditorView.lineWrapping,
       EditorView.contentAttributes.of({
         spellcheck: "true",
@@ -258,13 +292,11 @@ const view = new EditorView({
         //
         // This fires for a Source-originated selection AND for a
         // Preview-originated one once handlePreviewSelectionChanged below
-        // dispatches the snapped range into this same view — that reuse is
-        // deliberate (see blockMap.js and handlePreviewSelectionChanged's
-        // doc comment): there is exactly one path from "a Selection changed
-        // somewhere" to "native has been told", not two.
+        // dispatches the resulting snapped range into CodeMirror.
         if (update.selectionSet && !suppressChangeNotification) {
           const range = view.state.selection.main;
           if (!range.empty) {
+            postToNative({ type: "previewSelectionMappable" });
             const text = view.state.sliceDoc(range.from, range.to);
             const line = view.state.doc.lineAt(range.head);
             postToNative({
@@ -294,12 +326,20 @@ const view = new EditorView({
 
 appearance.addEventListener("change", schedulePreviewRender);
 
-window.__contexture_setContent = function setContent(text) {
+window.__contexture_setContent = function setContent(text, format) {
   suppressChangeNotification = true;
   try {
-    view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: text },
-    });
+    if (format && format !== currentFormat) {
+      currentFormat = format;
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: text },
+        effects: languageCompartment.reconfigure(getLanguageExtension(currentFormat)),
+      });
+    } else {
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: text },
+      });
+    }
   } finally {
     suppressChangeNotification = false;
   }
@@ -307,6 +347,19 @@ window.__contexture_setContent = function setContent(text) {
 
 window.__contexture_getContent = function getContent() {
   return view.state.doc.toString();
+};
+
+window.__contexture_setFormat = function setFormat(format) {
+  if (format === currentFormat) return;
+  currentFormat = format;
+  view.dispatch({
+    effects: languageCompartment.reconfigure(getLanguageExtension(currentFormat)),
+  });
+  schedulePreviewRender();
+};
+
+window.__contexture_getFormat = function getFormat() {
+  return currentFormat;
 };
 
 let currentViewMode = document.getElementById("root")?.getAttribute("data-view-mode") || "previewOnly";
@@ -407,15 +460,28 @@ function currentScrollMap() {
 
   const previewY = previewScrollY();
   const anchors = [];
-  for (const element of previewDocument.querySelectorAll("[data-src]")) {
-    const range = parseBlockRange(element.getAttribute("data-src"));
-    const lineNumber = range ? range.start + 1 : 0;
-    if (lineNumber < 1 || lineNumber > view.state.doc.lines) continue;
-    const sourcePosition = view.state.doc.line(lineNumber).from;
-    anchors.push({
-      source: view.lineBlockAt(sourcePosition).top + view.documentPadding.top,
-      preview: element.getBoundingClientRect().top + previewY,
-    });
+  if (currentFormat === "html") {
+    for (const element of previewDocument.querySelectorAll(`[${currentHTMLAttrName}]`)) {
+      const id = Number(element.getAttribute(currentHTMLAttrName));
+      const block = currentHTMLBlockMap.get(id);
+      if (!block) continue;
+      const sourcePosition = Math.min(block.start, view.state.doc.length);
+      anchors.push({
+        source: view.lineBlockAt(sourcePosition).top + view.documentPadding.top,
+        preview: element.getBoundingClientRect().top + previewY,
+      });
+    }
+  } else {
+    for (const element of previewDocument.querySelectorAll("[data-src]")) {
+      const range = parseBlockRange(element.getAttribute("data-src"));
+      const lineNumber = range ? range.start + 1 : 0;
+      if (lineNumber < 1 || lineNumber > view.state.doc.lines) continue;
+      const sourcePosition = view.state.doc.line(lineNumber).from;
+      anchors.push({
+        source: view.lineBlockAt(sourcePosition).top + view.documentPadding.top,
+        preview: element.getBoundingClientRect().top + previewY,
+      });
+    }
   }
 
   scrollMap = createScrollMap({
@@ -548,18 +614,38 @@ function configurePreviewDiagram(figure) {
     );
     if (expandable) {
       openLink.dataset.contextureExpandable = "true";
-      openLink.setAttribute("href", `#contexture-diagram-${diagramID}`);
-      openLink.setAttribute("aria-label", `Open enlarged view of ${image.alt || "Mermaid diagram"}`);
-      openLink.setAttribute("title", "Open enlarged diagram");
+      openLink.setAttribute("role", "button");
+      openLink.setAttribute("tabindex", "0");
+      openLink.setAttribute(
+        "aria-label",
+        `Open enlarged view for ${image.alt || "Mermaid diagram"}`
+      );
     } else {
       delete openLink.dataset.contextureExpandable;
-      openLink.removeAttribute("href");
+      openLink.removeAttribute("role");
+      openLink.removeAttribute("tabindex");
       openLink.removeAttribute("aria-label");
-      openLink.removeAttribute("title");
     }
   };
-  if (image.complete) refresh();
-  else image.addEventListener("load", refresh, { once: true });
+
+  if (image.complete) {
+    refresh();
+  } else {
+    image.addEventListener("load", refresh, { once: true });
+  }
+
+  openLink.onclick = (event) => {
+    if (openLink.dataset.contextureExpandable !== "true") return;
+    event.preventDefault();
+    openDiagramViewer(image, openLink);
+  };
+  openLink.onkeydown = (event) => {
+    if (openLink.dataset.contextureExpandable !== "true") return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openDiagramViewer(image, openLink);
+    }
+  };
 }
 
 function configurePreviewDiagramInteractions() {
@@ -570,32 +656,24 @@ function configurePreviewDiagramInteractions() {
   }
 }
 
-window.__contexture_openDiagram = function openDiagram(identifier) {
-  if (!/^\d+$/.test(String(identifier))) return false;
-  const figure = previewFrame.contentDocument?.querySelector(
-    `.contexture-mermaid[data-diagram-id="${identifier}"]`
-  );
-  const openLink = figure?.querySelector(".contexture-mermaid__open");
-  const image = openLink?.querySelector("img");
-  if (openLink?.dataset.contextureExpandable !== "true" || !image) return false;
-  openDiagramViewer(image, openLink);
-  return true;
-};
-
-diagramViewerZoomOut.addEventListener("click", () => {
-  if (diagramViewerState) setDiagramViewerScale(diagramViewerState.scale / DIAGRAM_ZOOM_STEP);
-});
-diagramViewerFit.addEventListener("click", fitDiagramViewer);
 diagramViewerZoomIn.addEventListener("click", () => {
-  if (diagramViewerState) setDiagramViewerScale(diagramViewerState.scale * DIAGRAM_ZOOM_STEP);
+  if (!diagramViewerState) return;
+  setDiagramViewerScale(diagramViewerState.scale * DIAGRAM_ZOOM_STEP);
 });
-diagramViewerClose.addEventListener("click", closeDiagramViewer);
+diagramViewerZoomOut.addEventListener("click", () => {
+  if (!diagramViewerState) return;
+  setDiagramViewerScale(diagramViewerState.scale / DIAGRAM_ZOOM_STEP);
+});
+diagramViewerFit.addEventListener("click", () => {
+  fitDiagramViewer();
+});
+diagramViewerClose.addEventListener("click", () => {
+  closeDiagramViewer();
+});
 diagramViewer.addEventListener("click", (event) => {
-  if (event.target !== diagramViewer) return;
-  const bounds = diagramViewer.getBoundingClientRect();
-  const outside = event.clientX < bounds.left || event.clientX > bounds.right
-    || event.clientY < bounds.top || event.clientY > bounds.bottom;
-  if (outside) closeDiagramViewer();
+  if (event.target === diagramViewer) {
+    closeDiagramViewer();
+  }
 });
 diagramViewer.addEventListener("keydown", (event) => {
   if (event.key === "+" || event.key === "=") {
@@ -667,7 +745,7 @@ window.__contexture_setPreviewHTML = function setPreviewHTML(html) {
   previewFrame.srcdoc = html;
 };
 
-// --- Synchronized Selection (issue #5) ---
+// --- Synchronized Selection (issue #5, issue #28) ---
 //
 // A Selection made in either pane is shown in both. What is published to
 // native (and from there, the Selection Bridge) is always a Source range —
@@ -742,6 +820,22 @@ function applyPreviewHighlightForSelection(range) {
   if (!previewDocument || !previewDocument.body) return;
   clearPreviewHighlight();
 
+  if (currentFormat === "html") {
+    if (!currentHTMLBlocks || currentHTMLBlocks.length === 0) return;
+    const treeRoot = { start: -Infinity, end: Infinity, children: currentHTMLBlocks };
+    const snapped = snapHTMLBlocks(treeRoot, { start: range.from, end: range.to });
+    if (snapped && snapped.nodes) {
+      for (const node of snapped.nodes) {
+        const el = previewDocument.querySelector(`[${currentHTMLAttrName}="${node.id}"]`);
+        if (el) {
+          el.classList.add(PREVIEW_HIGHLIGHT_CLASS);
+          highlightedPreviewElements.push(el);
+        }
+      }
+    }
+    return;
+  }
+
   const fromLine = view.state.doc.lineAt(range.from).number;
   const toLine = view.state.doc.lineAt(range.to).number;
   const target = blockRangeForCmLines(fromLine, toLine);
@@ -759,16 +853,12 @@ function applyPreviewHighlightForSelection(range) {
   }
 }
 
-/// Walks up from a DOM node inside the Preview document to the nearest
-/// ancestor element carrying `data-src`, or null if none exists (e.g. the
-/// node is inside a raw HTML block, which stampSourceRanges does not stamp
-/// — see blockMap.js's doc comment on that documented gap).
-function nearestDataSrcElement(node, previewDocument) {
+function nearestElementWithAttribute(node, previewDocument, attrName) {
   let element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
-  while (element && element !== previewDocument.body && !element.hasAttribute("data-src")) {
+  while (element && element !== previewDocument.body && !element.hasAttribute(attrName)) {
     element = element.parentElement;
   }
-  return element && element.hasAttribute("data-src") ? element : null;
+  return element && element.hasAttribute(attrName) ? element : null;
 }
 
 /// Preview -> Source selection. Called when polling (below) detects the
@@ -787,8 +877,62 @@ function nearestDataSrcElement(node, previewDocument) {
 function handlePreviewSelectionChanged(domRange) {
   const previewDocument = previewFrame.contentDocument;
   if (!previewDocument) return;
-  const startElement = nearestDataSrcElement(domRange.startContainer, previewDocument);
-  const endElement = nearestDataSrcElement(domRange.endContainer, previewDocument);
+
+  if (currentFormat === "html") {
+    const startElement = nearestElementWithAttribute(domRange.startContainer, previewDocument, currentHTMLAttrName);
+    const endElement = nearestElementWithAttribute(domRange.endContainer, previewDocument, currentHTMLAttrName);
+
+    const reportUnmappable = () => {
+      postToNative({
+        type: "previewSelectionUnmappable",
+        reason: "Cannot map preview selection: select in Source instead.",
+      });
+      lastPreviewSelectionPoint = null;
+    };
+
+    if (!startElement || !endElement) {
+      reportUnmappable();
+      return;
+    }
+
+    const startId = Number(startElement.getAttribute(currentHTMLAttrName));
+    const endId = Number(endElement.getAttribute(currentHTMLAttrName));
+    const startBlock = currentHTMLBlockMap.get(startId);
+    const endBlock = currentHTMLBlockMap.get(endId);
+
+    if (!startBlock || !endBlock || !startBlock.isComplete || !endBlock.isComplete) {
+      reportUnmappable();
+      return;
+    }
+
+    const touched = {
+      start: Math.min(startBlock.start, endBlock.start),
+      end: Math.max(startBlock.end, endBlock.end),
+    };
+
+    const treeRoot = { start: -Infinity, end: Infinity, children: currentHTMLBlocks };
+    const snapped = snapHTMLBlocks(treeRoot, touched);
+    if (!snapped) {
+      reportUnmappable();
+      return;
+    }
+
+    const docLength = view.state.doc.length;
+    const from = Math.min(Math.max(snapped.from, 0), docLength);
+    const to = Math.min(Math.max(snapped.to, 0), docLength);
+    if (from >= to) {
+      reportUnmappable();
+      return;
+    }
+
+    postToNative({ type: "previewSelectionMappable" });
+    view.dispatch({ selection: EditorSelection.range(from, to), scrollIntoView: true });
+    return;
+  }
+
+  // Markdown selection
+  const startElement = nearestElementWithAttribute(domRange.startContainer, previewDocument, "data-src");
+  const endElement = nearestElementWithAttribute(domRange.endContainer, previewDocument, "data-src");
   if (!startElement || !endElement) return;
 
   const startRange = parseBlockRange(startElement.getAttribute("data-src"));
@@ -820,6 +964,7 @@ function handlePreviewSelectionChanged(domRange) {
   const to = view.state.doc.line(clampedToLine).to;
   if (from >= to) return;
 
+  postToNative({ type: "previewSelectionMappable" });
   view.dispatch({ selection: EditorSelection.range(from, to), scrollIntoView: true });
 }
 

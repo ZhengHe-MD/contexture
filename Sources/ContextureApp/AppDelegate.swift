@@ -45,6 +45,12 @@ enum AppMenuBuilder {
         let fileMenu = NSMenu(title: "File")
         fileMenuItem.submenu = fileMenu
         fileMenu.addItem(withTitle: "New", action: #selector(NSDocumentController.newDocument(_:)), keyEquivalent: "n")
+        let newHTML = fileMenu.addItem(
+            withTitle: "New HTML",
+            action: #selector(AppDocumentController.newHTMLDocument(_:)),
+            keyEquivalent: "n"
+        )
+        newHTML.keyEquivalentModifierMask = [.command, .option]
         fileMenu.addItem(withTitle: "Open…", action: #selector(NSDocumentController.openDocument(_:)), keyEquivalent: "o")
         fileMenu.addItem(NSMenuItem.separator())
         fileMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
@@ -129,20 +135,20 @@ enum AppMenuBuilder {
         let sharingMenu = NSMenu(title: "Sharing")
         sharingMenuItem.submenu = sharingMenu
         // Off / Next Prompt are mutually exclusive (docs/product.md
-        // "Sharing modes"); MarkdownDocument.validateMenuItem(_:) is what
+        // "Sharing modes"); ContextureDocument.validateMenuItem(_:) is what
         // actually checks the currently-active one. These dispatch through
         // the responder chain to the key window's document exactly like
         // the File menu's NSDocument actions do — see this enum's doc
-        // comment — except these selectors are defined on MarkdownDocument
+        // comment — except these selectors are defined on ContextureDocument
         // itself rather than being AppKit-standard ones.
         sharingMenu.addItem(
             withTitle: "Off",
-            action: #selector(MarkdownDocument.setSharingModeOff(_:)),
+            action: #selector(ContextureDocument.setSharingModeOff(_:)),
             keyEquivalent: ""
         )
         sharingMenu.addItem(
             withTitle: "Next Prompt",
-            action: #selector(MarkdownDocument.setSharingModeNextPrompt(_:)),
+            action: #selector(ContextureDocument.setSharingModeNextPrompt(_:)),
             keyEquivalent: ""
         )
         sharingMenu.addItem(NSMenuItem.separator())
@@ -157,7 +163,7 @@ enum AppMenuBuilder {
         // to "clear," and unclaimed by anything else in this menu bar.
         let clearItem = sharingMenu.addItem(
             withTitle: "Clear Armed Snapshot",
-            action: #selector(MarkdownDocument.clearArmedSnapshot(_:)),
+            action: #selector(ContextureDocument.clearArmedSnapshot(_:)),
             keyEquivalent: "."
         )
         clearItem.keyEquivalentModifierMask = [.command]

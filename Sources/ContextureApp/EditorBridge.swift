@@ -26,6 +26,18 @@ protocol EditorBridgeDelegate: AnyObject {
     /// and is not yet sanitized or CSP-wrapped for the Preview pane. See
     /// `PreviewDocumentBuilder` and ADR-0005.
     func editorBridgePreviewHTMLDidChange(_ html: String)
+    func editorBridgePreviewSelectionDidFail(reason: String)
+    func editorBridgePreviewSelectionDidSucceed()
+}
+
+extension EditorBridgeDelegate {
+    func editorBridgeDidBecomeReady() {}
+    func editorBridgeContentDidChange(_ text: String) {}
+    func editorBridgeSelectionDidChange(_ change: EditorSelectionChange) {}
+    func editorBridgeDocumentTitleDidChange(_ title: String?) {}
+    func editorBridgePreviewHTMLDidChange(_ html: String) {}
+    func editorBridgePreviewSelectionDidFail(reason: String) {}
+    func editorBridgePreviewSelectionDidSucceed() {}
 }
 
 /// `WKScriptMessageHandler` is a strong-retaining relationship from the
@@ -69,6 +81,11 @@ final class EditorBridgeMessageHandler: NSObject, WKScriptMessageHandler {
             if let html = body["html"] as? String {
                 delegate?.editorBridgePreviewHTMLDidChange(html)
             }
+        case "previewSelectionUnmappable":
+            let reason = (body["reason"] as? String) ?? "Cannot map preview selection: select in Source instead."
+            delegate?.editorBridgePreviewSelectionDidFail(reason: reason)
+        case "previewSelectionMappable":
+            delegate?.editorBridgePreviewSelectionDidSucceed()
         default:
             break
         }

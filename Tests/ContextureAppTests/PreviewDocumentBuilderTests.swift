@@ -165,4 +165,55 @@ import Testing
         #expect(document.contains("<body>"))
         #expect(document.contains("</html>"))
     }
+
+    @Test func buildDocumentForFullHTMLPagePreservesAuthoredCSSAndLayout() {
+        let authored = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <title>Test Page</title>
+        <style>body { background: navy; margin: 40px; } h1 { font-family: serif; }</style>
+        </head>
+        <body>
+        <h1>Title</h1>
+        <p>Text</p>
+        </body>
+        </html>
+        """
+        let doc = PreviewDocumentBuilder.buildDocument(bodyHTML: authored, format: .html)
+        #expect(doc.contains("background: navy"))
+        #expect(doc.contains("margin: 40px"))
+        #expect(doc.contains("font-family: serif"))
+        #expect(doc.contains(".contexture-selected"))
+        #expect(doc.contains("Content-Security-Policy"))
+        #expect(doc.contains("<meta charset=\"utf-8\">"))
+    }
+
+    @Test func buildDocumentForFullHTMLPageDoesNotImposeMarkdownTypography() {
+        let authored = "<!DOCTYPE html><html><head></head><body><p>Text</p></body></html>"
+        let doc = PreviewDocumentBuilder.buildDocument(bodyHTML: authored, format: .html)
+        // Markdown style specifies padding: 12px 16px and table border-collapse;
+        // full HTML page must not have Markdown's body style injected into it.
+        #expect(!doc.contains("border-collapse: collapse"))
+    }
+
+    @Test func buildDocumentForHTMLFragmentAppliesReadableDefaults() {
+        let fragment = "<h2>Fragment Title</h2><p>Fragment text.</p>"
+        let doc = PreviewDocumentBuilder.buildDocument(bodyHTML: fragment, format: .html)
+        #expect(doc.contains("<!doctype html>"))
+        #expect(doc.contains("<html>"))
+        #expect(doc.contains("<head>"))
+        #expect(doc.contains("Content-Security-Policy"))
+        #expect(doc.contains(".contexture-selected"))
+        #expect(doc.contains("padding: 12px 16px"))
+        #expect(doc.contains("<h2>Fragment Title</h2><p>Fragment text.</p>"))
+    }
+
+    @Test func buildDocumentForFullHTMLPageWithoutHeadDoesNotInjectIntoHeader() {
+        let authored = "<!DOCTYPE html><html><body><header>Site Header</header><p>Text</p></body></html>"
+        let doc = PreviewDocumentBuilder.buildDocument(bodyHTML: authored, format: .html)
+        #expect(doc.contains("<head>"))
+        #expect(!doc.contains("<header>\n<meta"))
+        #expect(doc.contains("<header>Site Header</header>"))
+    }
 }

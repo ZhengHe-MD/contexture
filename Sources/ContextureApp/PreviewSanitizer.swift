@@ -1,7 +1,8 @@
+import ContextureKit
 import Foundation
 
-/// Strips the most dangerous constructs out of Markdown-rendered HTML before
-/// it reaches the Preview pane.
+/// Strips the most dangerous constructs out of Markdown-rendered HTML or
+/// authored HTML before it reaches the Preview pane.
 ///
 /// This is defense in depth, **not** the primary control. The primary
 /// control is the Preview iframe's `sandbox` attribute (no `allow-scripts`,
@@ -14,19 +15,14 @@ import Foundation
 /// is ever misconfigured, disabled by a future refactor, or a WebKit
 /// behaviour changes underneath it — and because regex-based sanitization
 /// of arbitrary HTML can never be a complete parser, it does not attempt to
-/// be one. It targets exactly the constructs GFM's raw-HTML passthrough can
-/// smuggle a beacon or an active-content escape through: `<script>` and
-/// friends, inline event-handler attributes, `javascript:`/`vbscript:`
-/// URLs, and the click-time `ping` beacon.
+/// be one. It targets exactly the constructs GFM's raw-HTML passthrough or
+/// authored HTML can smuggle a beacon or an active-content escape through:
+/// `<script>` and friends, inline event-handler attributes,
+/// `javascript:`/`vbscript:` URLs, CSS `@import`/remote URLs, and the
+/// click-time `ping` beacon.
 enum PreviewSanitizer {
-    /// Tags removed entirely, including their contents: each can either run
-    /// (script), embed another active document (iframe/object/embed/applet),
-    /// or influence the document in ways `PreviewDocumentBuilder`'s own head
-    /// already owns (link/meta/base/style — a raw `<meta http-equiv=
-    /// "Content-Security-Policy">` or `<base href>` from the Document must
-    /// not be able to sit next to, or be confused with, the trusted CSP and
-    /// document structure `PreviewDocumentBuilder` adds around this output).
-    private static let removedTags = ["script", "iframe", "object", "embed", "applet", "link", "meta", "base", "style"]
+    private static let markdownRemovedTags = ["script", "iframe", "object", "embed", "applet", "link", "meta", "base", "style"]
+    private static let htmlRemovedTags = ["script", "iframe", "object", "embed", "applet", "link", "meta", "base"]
 
     /// Attributes whose value can point at a resource or navigation target.
     /// `src` covers `<img>` too, but `data:` images are the whole point of
@@ -35,10 +31,11 @@ enum PreviewSanitizer {
     /// itself.
     private static let urlAttributes = ["href", "src", "action", "formaction", "poster", "background", "cite"]
 
-    static func sanitize(_ html: String) -> String {
+    static func sanitize(_ html: String, format: FormatTag = .markdown) -> String {
         var result = html
 
-        for tag in removedTags {
+        let tags = format == .html ? htmlRemovedTags : markdownRemovedTags
+        for tag in tags {
             result = replacing(in: result, pattern: "<\(tag)\\b[^>]*>[\\s\\S]*?</\(tag)\\s*>", with: "")
             // A stray/unclosed opening tag (malformed or truncated HTML).
             result = replacing(in: result, pattern: "<\(tag)\\b[^>]*/?>", with: "")
@@ -79,6 +76,22 @@ enum PreviewSanitizer {
         result = replacing(in: result, pattern: "\\s+ping\\s*=\\s*\"[^\"]*\"", with: "")
         result = replacing(in: result, pattern: "\\s+ping\\s*=\\s*'[^']*'", with: "")
         result = replacing(in: result, pattern: "\\s+ping\\s*=\\s*[^\\s>]+", with: "")
+
+        if format == .html {
+            // Defense in depth for CSS:
+            // 1. Strip CSS @import statements to prevent external stylesheet loading.
+            result = replacing(in: result, pattern: "@import\\s+[^;]+;?", with: "")
+            // 2. Neutralize non-data/non-empty CSS url(...) to url("about:blank")
+            result = replacing(
+                in: result,
+                pattern: "url\\s*\\(\\s*(?:\"(?!(?:data:|about:blank|#))[^\"]*\"|'(?!(?:data:|about:blank|#))[^']*'|(?!(?:data:|about:blank|#|\"|'))[^)]+)\\s*\\)",
+                with: "url(\"about:blank\")"
+            )
+            // 3. Prevent form submissions by redirecting any action/formaction attributes to about:blank.
+            result = replacing(in: result, pattern: "\\b(?:action|formaction)\\s*=\\s*\"[^\"]*\"", with: "action=\"about:blank\"")
+            result = replacing(in: result, pattern: "\\b(?:action|formaction)\\s*=\\s*'[^']*'", with: "action=\"about:blank\"")
+            result = replacing(in: result, pattern: "\\b(?:action|formaction)\\s*=\\s*[^\\s>]+", with: "action=\"about:blank\"")
+        }
 
         return result
     }

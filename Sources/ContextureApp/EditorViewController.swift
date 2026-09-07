@@ -1,6 +1,6 @@
 import AppKit
-import WebKit
 import ContextureKit
+import WebKit
 
 /// Hosts the Source and Preview panes side by side in one `WKWebView`, per
 /// ADR-0002 ("the split divider is CSS inside the web view rather than an
@@ -8,8 +8,8 @@ import ContextureKit
 /// changes and answers for the editor's current content on demand.
 ///
 /// The Source pane (CodeMirror) and the outer page's own JS (which turns
-/// Source into Preview HTML via markdown-it — editor-web/src/main.js) are
-/// trusted first-party content and need JavaScript, so this WKWebView keeps
+/// Source into Preview HTML via markdown-it or HTML block mapping — editor-web/src/main.js)
+/// are trusted first-party content and need JavaScript, so this WKWebView keeps
 /// JS enabled overall. The Preview pane is instead isolated at the DOM
 /// level: its content lives in a sandboxed `<iframe>` (no `allow-scripts`)
 /// whose `srcdoc` is a document `PreviewDocumentBuilder` sanitizes and
@@ -18,7 +18,8 @@ import ContextureKit
 final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavigationDelegate {
     private let webView: WKWebView
     private let messageHandler = EditorBridgeMessageHandler()
-    private var pendingInitialText: String?
+    private var pendingInitialText: (text: String, format: FormatTag)?
+    private var currentFormat: FormatTag = .markdown
     private var isReady = false
     private let userDefaults: UserDefaults
     private(set) var currentViewMode: ViewMode
@@ -31,6 +32,8 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
     /// Read at Preview-build time rather than copied once at initial load so
     /// Save As immediately changes how relative image paths are resolved.
     var documentURLProvider: (() -> URL?)?
+    var onPreviewSelectionUnmappable: ((String) -> Void)?
+    var onPreviewSelectionMappable: (() -> Void)?
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
@@ -43,9 +46,9 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
         // This WKWebView runs JavaScript: CodeMirror (Source) needs it, and
         // so does the outer page's own script that renders Source to
         // Preview HTML. Both are trusted first-party content (the bundled
-        // editor script). The untrusted part — the Document's own Markdown
+        // editor script). The untrusted part — the Document's own content
         // rendered to HTML, which may contain raw <script>/<img
-        // src=remote>/etc. per GFM — never runs as script in this webview
+        // src=remote>/etc. — never runs as script in this webview
         // at all; it only ever becomes the `srcdoc` of a sandboxed iframe
         // with no `allow-scripts` (see EditorViewController's class doc
         // comment and PreviewDocumentBuilder).
@@ -97,18 +100,21 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
 
     /// Sets the Source shown in the editor. Safe to call before the webview
     /// has finished loading; the text is applied once JS reports readiness.
-    func load(initialText: String) {
+    func load(initialText: String, format: FormatTag = .markdown) {
+        currentFormat = format
         if isReady {
-            setContent(initialText)
+            setContent(initialText, format: format)
         } else {
-            pendingInitialText = initialText
+            pendingInitialText = (text: initialText, format: format)
         }
     }
 
-    private func setContent(_ text: String) {
-        guard let payload = try? JSONEncoder().encode(text),
-              let json = String(data: payload, encoding: .utf8) else { return }
-        webView.evaluateJavaScript("window.__contexture_setContent(\(json))")
+    private func setContent(_ text: String, format: FormatTag) {
+        guard let textPayload = try? JSONEncoder().encode(text),
+              let textJSON = String(data: textPayload, encoding: .utf8),
+              let formatPayload = try? JSONEncoder().encode(format.rawValue),
+              let formatJSON = String(data: formatPayload, encoding: .utf8) else { return }
+        webView.evaluateJavaScript("window.__contexture_setContent(\(textJSON), \(formatJSON))")
     }
 
     func setViewMode(_ mode: ViewMode, persistAsDefault: Bool = true) {
@@ -141,11 +147,11 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
     }
 
     func zoomIn() {
-        setZoomFactor(DocumentZoom.zoomedIn(from: currentZoomFactor), showHUD: true, persistAsDefault: true)
+        setZoomFactor(DocumentZoom.zoomedIn(from: currentZoomFactor))
     }
 
     func zoomOut() {
-        setZoomFactor(DocumentZoom.zoomedOut(from: currentZoomFactor), showHUD: true, persistAsDefault: true)
+        setZoomFactor(DocumentZoom.zoomedOut(from: currentZoomFactor))
     }
 
     func actualSize() {
@@ -157,8 +163,8 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
     func editorBridgeDidBecomeReady() {
         isReady = true
         setViewMode(currentViewMode, persistAsDefault: false)
-        if let text = pendingInitialText {
-            setContent(text)
+        if let (text, format) = pendingInitialText {
+            setContent(text, format: format)
             pendingInitialText = nil
         }
     }
@@ -185,6 +191,7 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
     func editorBridgePreviewHTMLDidChange(_ html: String) {
         let document = PreviewDocumentBuilder.buildDocument(
             bodyHTML: html,
+            format: currentFormat,
             documentURL: documentURLProvider?()
         )
         guard let payload = try? JSONEncoder().encode(document),
@@ -232,4 +239,11 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
         return identifier
     }
 
+    func editorBridgePreviewSelectionDidFail(reason: String) {
+        onPreviewSelectionUnmappable?(reason)
+    }
+
+    func editorBridgePreviewSelectionDidSucceed() {
+        onPreviewSelectionMappable?()
+    }
 }

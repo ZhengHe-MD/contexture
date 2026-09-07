@@ -5,4 +5,5 @@
 /// installed on users' machines. See docs/product.md "Extensibility posture".
 public enum FormatTag: String, Sendable, Codable, Equatable {
     case markdown
+    case html
 }
