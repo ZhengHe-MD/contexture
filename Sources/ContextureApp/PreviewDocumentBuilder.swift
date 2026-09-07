@@ -1,7 +1,8 @@
+import ContextureKit
 import Foundation
 
-/// Wraps Markdown-rendered HTML in a standalone document for the Preview
-/// pane's sandboxed `<iframe>` (`srcdoc`, set from
+/// Wraps Markdown-rendered HTML or authored HTML in a standalone document for
+/// the Preview pane's sandboxed `<iframe>` (`srcdoc`, set from
 /// `EditorViewController.editorBridgePreviewHTMLDidChange(_:)` — see
 /// `editor-web/src/main.js`'s `window.__contexture_setPreviewHTML`).
 ///
@@ -12,13 +13,13 @@ import Foundation
 /// the Content-Security-Policy below independently blocks every subresource
 /// fetch — image, stylesheet, font, media, frame, XHR/fetch, prefetch, form
 /// submission — from any origin other than `data:` (inline images) and
-/// inline `<style>`/`style=` (this document's own table/code-block CSS).
-/// Before the CSP is applied, supported local raster images whose `src` is
-/// relative to the Markdown Document are read from disk and converted to
-/// `data:` URLs. This preserves the no-file/no-network runtime boundary while
-/// making ordinary Markdown image paths useful. `PreviewSanitizer` is applied
-/// on top as defense in depth; see its doc comment for why that ordering is
-/// deliberate.
+/// inline `<style>`/`style=` (authored CSS or table/code-block CSS).
+/// For Markdown documents, before the CSP is applied, supported local raster
+/// images whose `src` is relative to the Markdown Document are read from disk
+/// and converted to `data:` URLs. This preserves the no-file/no-network runtime
+/// boundary while making ordinary Markdown image paths useful. `PreviewSanitizer`
+/// is applied on top as defense in depth; see its doc comment for why that ordering
+/// is deliberate.
 enum PreviewDocumentBuilder {
     /// A Preview is rebuilt frequently while typing, so do not let one image
     /// turn every keystroke into an unbounded file read and base64 allocation.
@@ -46,19 +47,15 @@ enum PreviewDocumentBuilder {
         "base-uri 'none'",
     ].joined(separator: "; ")
 
+    /// Synchronized selection highlight style.
+    static let selectedHighlightStyle = """
+    .contexture-selected { background: rgba(255, 190, 40, 0.35) !important; outline: 1px solid rgba(200, 140, 0, 0.6) !important; outline-offset: 1px !important; border-radius: 3px !important; }
+    """
+
     /// Minimal styling so GFM tables and fenced code blocks are legible;
     /// `color-scheme: light dark` follows the writer's system appearance
     /// the same way `editor-web/src/editor.css` does for the Source pane.
-    ///
-    /// `.contexture-selected` is the synchronized-Selection highlight
-    /// (issue #5): the outer trusted page's own script — never anything
-    /// running inside this sandboxed document — adds/removes that class on
-    /// the block-level element(s) `editor-web/src/blockMap.js`'s
-    /// `data-src` attributes resolve a Source (or Preview) Selection to.
-    /// It lives here, in the trusted wrapper this class builds, rather
-    /// than in `bodyHTML`, so a Document could never smuggle a same-named
-    /// class to spoof the highlight.
-    private static let style = """
+    private static let markdownStyle = """
     :root { color-scheme: light dark; }
     body { margin: 0; padding: 12px 16px; font: 14px -apple-system, system-ui, sans-serif; line-height: 1.55; word-wrap: break-word; }
     img { max-width: 100%; }
@@ -73,24 +70,55 @@ enum PreviewDocumentBuilder {
     .contexture-mermaid__open[data-contexture-expandable="true"] { cursor: zoom-in; }
     .contexture-mermaid__open[data-contexture-expandable="true"]:focus-visible { outline: 3px solid AccentColor; outline-offset: 3px; }
     .contexture-mermaid-error { border-left: 3px solid #c33; color: #c33; white-space: pre-wrap; }
-    .contexture-selected { background: rgba(255, 190, 40, 0.35); outline: 1px solid rgba(200, 140, 0, 0.6); outline-offset: 1px; border-radius: 3px; }
+    \(selectedHighlightStyle)
     """
 
-    /// `bodyHTML` is untrusted Markdown-rendered output (see
-    /// `editor-web/src/main.js`'s `markdownRenderer`, run with `html: true`
-    /// so it preserves raw HTML the way real GFM does) — this function is
-    /// the one place that both sanitizes it and puts it inside the CSP
-    /// boundary above, so no caller can forget either step.
-    static func buildDocument(bodyHTML: String, documentURL: URL? = nil) -> String {
+    /// Minimal readable defaults for unstyled HTML fragments without imposing
+    /// table or code block styles that could conflict with authored styling.
+    private static let htmlFragmentStyle = """
+    :root { color-scheme: light dark; }
+    body { margin: 0; padding: 12px 16px; font: 14px -apple-system, system-ui, sans-serif; line-height: 1.55; word-wrap: break-word; }
+    img { max-width: 100%; }
+    \(selectedHighlightStyle)
+    """
+
+    /// `bodyHTML` is untrusted Markdown-rendered output or authored HTML.
+    /// This function sanitizes it and puts it inside the CSP boundary.
+    static func buildDocument(
+        bodyHTML: String,
+        format: FormatTag = .markdown,
+        documentURL: URL? = nil
+    ) -> String {
+        if format == .html {
+            let sanitized = PreviewSanitizer.sanitize(bodyHTML, format: .html)
+            let lower = sanitized.lowercased()
+            let isFullPage = lower.contains("<!doctype") || lower.contains("<html") || lower.contains("<body")
+            if isFullPage {
+                return injectIntoFullHTMLPage(sanitized)
+            } else {
+                return """
+                <!doctype html>
+                <html>
+                <head>
+                <meta charset="utf-8">
+                <meta http-equiv="Content-Security-Policy" content="\(contentSecurityPolicy)">
+                <style>\(htmlFragmentStyle)</style>
+                </head>
+                <body>\(sanitized)</body>
+                </html>
+                """
+            }
+        }
+
         let withLocalImages = inlineLocalImages(in: bodyHTML, documentURL: documentURL)
-        let sanitized = PreviewSanitizer.sanitize(withLocalImages)
+        let sanitized = PreviewSanitizer.sanitize(withLocalImages, format: .markdown)
         return """
         <!doctype html>
         <html>
         <head>
         <meta charset="utf-8">
         <meta http-equiv="Content-Security-Policy" content="\(contentSecurityPolicy)">
-        <style>\(style)</style>
+        <style>\(markdownStyle)</style>
         </head>
         <body>\(sanitized)</body>
         </html>
@@ -218,5 +246,45 @@ enum PreviewDocumentBuilder {
             result.replaceSubrange(entityRange, with: String(scalar))
         }
         return result
+    }
+
+    private static func injectIntoFullHTMLPage(_ html: String) -> String {
+        let injection = """
+        <meta charset="utf-8">
+        <meta http-equiv="Content-Security-Policy" content="\(contentSecurityPolicy)">
+        <style>\(selectedHighlightStyle)</style>
+        """
+
+        // Try inserting right after <head>
+        if let headRange = html.range(of: "<head(?=[\\s>])[^>]*>", options: [.regularExpression, .caseInsensitive]) {
+            var result = html
+            result.insert(contentsOf: "\n" + injection, at: headRange.upperBound)
+            return result
+        }
+
+        // If no <head>, try inserting after <html...>
+        if let htmlTagRange = html.range(of: "<html(?=[\\s>])[^>]*>", options: [.regularExpression, .caseInsensitive]) {
+            var result = html
+            result.insert(contentsOf: "\n<head>\n" + injection + "\n</head>", at: htmlTagRange.upperBound)
+            return result
+        }
+
+        // If no <head> or <html>, try inserting before <body...>
+        if let bodyTagRange = html.range(of: "<body(?=[\\s>])[^>]*>", options: [.regularExpression, .caseInsensitive]) {
+            var result = html
+            result.insert(contentsOf: "<head>\n" + injection + "\n</head>\n", at: bodyTagRange.lowerBound)
+            return result
+        }
+
+        // Fallback: wrap around
+        return """
+        <!doctype html>
+        <html>
+        <head>
+        \(injection)
+        </head>
+        \(html)
+        </html>
+        """
     }
 }

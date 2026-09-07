@@ -16,7 +16,8 @@ agent's conversation interface.
 Markdown is the first supported Document format. A fenced Source block whose
 first info-string token is `mermaid` renders as a static Diagram inside that
 Markdown Preview; this does not make standalone Mermaid files a second
-Document format. HTML, SVG, and standalone Mermaid are the natural next ones.
+Document format. HTML is the second supported Document format, with Markdown
+feature parity (see below); SVG and standalone Mermaid remain future candidates.
 Formats with nothing to render — JSON, source code — are out of scope; editors
 already own them.
 
@@ -112,6 +113,41 @@ persistent count of Armed snapshots and offers a single-key clear.
 - Keep opening, editing, previewing, saving, closing, and reopening ordinary
   files useful without any agent installation.
 - Keep agent integration quiet when it is unused or unavailable.
+
+## HTML support
+
+Scope agreed 2026-09-07; implemented in #28.
+Implementation specification: [HTML feature parity #28](https://github.com/ZhengHe-MD/contexture/issues/28).
+
+HTML Documents have the same writing and sharing features as Markdown:
+creation, opening, Source editing, live Preview, synchronized Selection,
+saving and autosave, external-change handling, closing and reopening, and
+Selection Snapshot sharing. Support both `.html` and `.htm`. Provide an
+explicit New HTML action while ordinary New continues creating Markdown.
+
+Preview accepts complete HTML pages and fragments, honors their authored layout
+and inline or embedded CSS, and supplies readable defaults for unstyled
+fragments. The first version supports self-contained HTML, including embedded
+images. Nearby images, stylesheets, and fonts are outside this version's scope;
+the existing prohibition on scripts and remote loads still applies.
+
+A Preview selection snaps to complete blocks, matching Markdown's granularity.
+For example, selecting "world" in `<p>Hello <strong>world</strong></p>` selects
+the entire paragraph's Source. Both panes show the resulting Selection, and
+sharing publishes those exact Source bytes with the HTML format tag.
+
+Preview continues rendering while the writer edits incomplete HTML. A Preview
+selection that cannot be reliably mapped to a complete Source block remains
+unshared, with an explanation; the writer can still select exact text in
+Source. Shared Source always preserves the original bytes, including any
+incomplete markup: Contexture does not invent closing tags or substitute the
+whole Document when mapping fails.
+
+Sharing snapshots from HTML documents carries the `html` format tag (`FormatTag.html`).
+Adapters must be compiled or updated against ContextureKit with `FormatTag.html` support
+to receive HTML snapshots. Older adapter binaries or schemas rejecting unrecognized
+format tags fail safely per schema validation without corrupting or mislabeling data;
+Contexture never mislabels HTML as Markdown for backward compatibility.
 
 ## Privacy and safety
 
@@ -227,7 +263,7 @@ explicit request.
 - When a Selection crosses blocks, should Contexture offer an explicit
   expansion to the containing heading section?
 - What is the retention policy for adapter diagnostics?
-- Which standalone Document format follows Markdown, and does it arrive before
+- Which standalone Document format follows HTML, and does it arrive before
   or after the first public release?
 - Does the CodeMirror editing surface hold up under a week of real writing, or
   does the loss of macOS text replacement force a native editor pane?

@@ -71,6 +71,7 @@ public enum ConformanceHarness {
         @discardableResult
         func arm(
             text: String = "selected passage",
+            format: FormatTag = .markdown,
             documentID: DocumentID = DocumentID(),
             filename: String = "notes.md",
             outsideRoot: Bool = false,
@@ -83,7 +84,7 @@ public enum ConformanceHarness {
             server.publish(SelectionSnapshot(
                 documentID: documentID,
                 sourceBytes: data,
-                format: .markdown,
+                format: format,
                 relativePath: filename,
                 absolutePath: absolutePath,
                 revision: RevisionHash(contentBytes: data),
@@ -254,6 +255,37 @@ public enum ConformanceHarness {
                 "real envelope's close marker must be the last thing in the injected block"
             )
             try require(injected.contains(attack), "the forged content must survive intact, as quoted data")
+        },
+
+        Case(name: "15. valid HTML selection") { context in
+            let htmlText = "<p>Hello <strong>world</strong></p>"
+            context.arm(text: htmlText, format: .html, filename: "page.html")
+            let result = try context.invoke(context.scenario())
+            guard let injected = result.injectedContext else {
+                throw CaseFailure(message: "expected injected context for HTML selection")
+            }
+            try require(injected.contains(htmlText), "expected HTML text in the injected context")
+            try require(injected.contains("format: html"), "expected format: html in envelope")
+            try require(injected.contains("document: page.html"), "expected relative document path in envelope")
+            try require(!injected.contains("/tmp/"), "absolute path must never appear in envelope")
+        },
+
+        Case(name: "16. HTML and Markdown selections under the same Working Root") { context in
+            context.arm(text: "<p>html snippet</p>", format: .html, filename: "page.html", version: 1)
+            Thread.sleep(forTimeInterval: 0.01)
+            context.arm(text: "markdown snippet", format: .markdown, filename: "notes.md", version: 2)
+            context.arm(text: "secret outside", format: .html, filename: "secret.html", outsideRoot: true)
+
+            let result = try context.invoke(context.scenario())
+            guard let injected = result.injectedContext else {
+                throw CaseFailure(message: "expected injected context for multi-format selections")
+            }
+            try require(injected.contains("<p>html snippet</p>"), "expected HTML content")
+            try require(injected.contains("format: html"), "expected format: html in envelope")
+            try require(injected.contains("markdown snippet"), "expected Markdown content")
+            try require(injected.contains("format: markdown"), "expected format: markdown in envelope")
+            try require(!injected.contains("secret outside"), "document outside Working Root must not appear")
+            try require(!injected.contains("/tmp/"), "absolute path must never appear in envelope")
         },
     ]
 

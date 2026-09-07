@@ -153,4 +153,66 @@ import Testing
         """
         #expect(PreviewSanitizer.sanitize(html) == html)
     }
+
+    @Test func htmlModePreservesAuthoredStyleTagsAndInlineStyles() {
+        let html = "<style>h1 { color: red; }</style><p style=\"font-size: 16px;\">hello</p>"
+        let sanitized = PreviewSanitizer.sanitize(html, format: .html)
+        #expect(sanitized.contains("<style>h1 { color: red; }</style>"))
+        #expect(sanitized.contains("style=\"font-size: 16px;\""))
+    }
+
+    @Test func htmlModeStripsCSSImports() {
+        let html = "<style>@import url('https://evil.example.com/style.css'); body { color: blue; }</style>"
+        let sanitized = PreviewSanitizer.sanitize(html, format: .html)
+        #expect(!sanitized.contains("@import"))
+        #expect(!sanitized.contains("evil.example.com"))
+        #expect(sanitized.contains("body { color: blue; }"))
+    }
+
+    @Test func htmlModeNeutralizesNonDataCSSURLs() {
+        let html = "<style>body { background: url('https://evil.example.com/bg.png'); }</style><div style=\"background: url('remote.jpg');\">x</div>"
+        let sanitized = PreviewSanitizer.sanitize(html, format: .html)
+        #expect(!sanitized.contains("evil.example.com"))
+        #expect(!sanitized.contains("remote.jpg"))
+        #expect(sanitized.contains("url(\"about:blank\")"))
+    }
+
+    @Test func htmlModePreservesDataURLsInCSS() {
+        let dataURL = "url('data:image/png;base64,AAAA')"
+        let html = "<style>body { background: \(dataURL); }</style>"
+        let sanitized = PreviewSanitizer.sanitize(html, format: .html)
+        #expect(sanitized.contains("data:image/png;base64,AAAA"))
+    }
+
+    @Test func htmlModeStripsScriptLinkMetaBaseAndActiveEmbeds() {
+        let html = """
+        <head>
+        <meta http-equiv="refresh" content="0">
+        <base href="https://evil.example.com/">
+        <link rel="stylesheet" href="external.css">
+        <script>alert(1)</script>
+        </head>
+        <body>
+        <iframe src="frame.html"></iframe>
+        <object data="flash.swf"></object>
+        <embed src="embed.mov">
+        </body>
+        """
+        let sanitized = PreviewSanitizer.sanitize(html, format: .html)
+        #expect(!sanitized.contains("<script"))
+        #expect(!sanitized.contains("<meta"))
+        #expect(!sanitized.contains("<base"))
+        #expect(!sanitized.contains("<link"))
+        #expect(!sanitized.contains("<iframe"))
+        #expect(!sanitized.contains("<object"))
+        #expect(!sanitized.contains("<embed"))
+    }
+
+    @Test func htmlModeNeutralizesForms() {
+        let html = "<form action=\"https://evil.example.com/submit\"><input type=\"text\"><button formaction=\"post.php\">Go</button></form>"
+        let sanitized = PreviewSanitizer.sanitize(html, format: .html)
+        #expect(!sanitized.contains("evil.example.com/submit"))
+        #expect(!sanitized.contains("post.php"))
+        #expect(sanitized.contains("action=\"about:blank\""))
+    }
 }

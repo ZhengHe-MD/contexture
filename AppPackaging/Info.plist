@@ -47,6 +47,25 @@
             <key>NSDocumentClass</key>
             <string>ContextureApp.MarkdownDocument</string>
         </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>HTML Document</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.html</string>
+            </array>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>html</string>
+                <string>htm</string>
+            </array>
+            <key>NSDocumentClass</key>
+            <string>ContextureApp.HTMLDocument</string>
+        </dict>
     </array>
     <key>UTImportedTypeDeclarations</key>
     <array>

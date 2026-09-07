@@ -19,4 +19,15 @@ final class AppDocumentController: NSDocumentController {
     override func documentClass(forType typeName: String) -> AnyClass? {
         registry.documentClass(forExtension: typeName)
     }
+
+    @objc func newHTMLDocument(_ sender: Any?) {
+        do {
+            let document = try makeUntitledDocument(ofType: "html")
+            addDocument(document)
+            document.makeWindowControllers()
+            document.showWindows()
+        } catch {
+            presentError(error)
+        }
+    }
 }

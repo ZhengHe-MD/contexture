@@ -12,6 +12,15 @@ import Testing
         #expect(registry.documentClass(forExtension: "markdown") == MarkdownDocument.self)
     }
 
+    @Test func mapsHTMLExtensionsToHTMLDocumentCaseInsensitively() {
+        let registry = DocumentTypeRegistry()
+        #expect(registry.documentClass(forExtension: "html") == HTMLDocument.self)
+        #expect(registry.documentClass(forExtension: "htm") == HTMLDocument.self)
+        #expect(registry.documentClass(forExtension: "HTML") == HTMLDocument.self)
+        #expect(registry.documentClass(forExtension: "HTM") == HTMLDocument.self)
+        #expect(registry.documentClass(forExtension: "Html") == HTMLDocument.self)
+    }
+
     @Test func fallsBackToMarkdownForAnUnknownExtension() {
         let registry = DocumentTypeRegistry()
         #expect(registry.documentClass(forExtension: "unknown") == MarkdownDocument.self)

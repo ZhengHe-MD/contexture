@@ -17,6 +17,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     private var frontMatterTitle: String?
     private var hasCompletedInitialFrameCheck = false
     private var isRepairingLegacyMinimumFrame = false
+    private var cannotShareReason: String?
+    private var previewUnmappableReason: String?
 
     convenience init() {
         self.init(frameAutosaveName: Self.frameAutosaveName)
@@ -177,16 +179,22 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// `windowDidLoad()` is only invoked automatically for a NIB-loaded
-    /// window; this window is built in code, so `MarkdownDocument` calls
+    /// window; this window is built in code, so `ContextureDocument` calls
     /// this explicitly once the document/window-controller relationship is
     /// established via `addWindowController(_:)`.
     override func windowDidLoad() {
         super.windowDidLoad()
         editorViewController.onContentChanged = { [weak self] newText in
-            (self?.document as? MarkdownDocument)?.updateText(newText)
+            (self?.document as? ContextureDocument)?.updateText(newText)
         }
         editorViewController.onSelectionChanged = { [weak self] change in
-            (self?.document as? MarkdownDocument)?.publishSelection(change)
+            (self?.document as? ContextureDocument)?.publishSelection(change)
+        }
+        editorViewController.onPreviewSelectionUnmappable = { [weak self] reason in
+            self?.setPreviewUnmappableReason(reason)
+        }
+        editorViewController.onPreviewSelectionMappable = { [weak self] in
+            self?.setPreviewUnmappableReason(nil)
         }
         editorViewController.onDocumentTitleChanged = { [weak self] title in
             self?.setFrontMatterTitle(title)
@@ -194,13 +202,13 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         viewModeAccessory.onModeSelected = { [weak self] mode in
             self?.setViewMode(mode)
         }
-        if let markdownDocument = document as? MarkdownDocument {
-            editorViewController.documentURLProvider = { [weak markdownDocument] in
-                markdownDocument?.fileURL
+        if let contextureDocument = document as? ContextureDocument {
+            editorViewController.documentURLProvider = { [weak contextureDocument] in
+                contextureDocument?.fileURL
             }
-            editorViewController.load(initialText: markdownDocument.text)
+            editorViewController.load(initialText: contextureDocument.text, format: contextureDocument.format)
             let armedIndicator = ArmedIndicatorViewController(
-                documentID: markdownDocument.documentID,
+                documentID: contextureDocument.documentID,
                 bridgeServer: AppServices.bridgeServer
             )
             window?.addTitlebarAccessoryViewController(armedIndicator)
@@ -234,7 +242,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     /// dirty — used when the file on disk changed underneath a clean
     /// buffer (issue #7).
     func reloadContent(_ text: String) {
-        editorViewController.load(initialText: text)
+        let format = (document as? ContextureDocument)?.format ?? .markdown
+        editorViewController.load(initialText: text, format: format)
+        setPreviewUnmappableReason(nil)
     }
 
     /// A Document with no path cannot publish a Selection Snapshot at all
@@ -244,7 +254,26 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     /// issue #6 adds, since this reflects "can this Document share at all,"
     /// not "is a Selection Armed right now."
     func setCannotShareReason(_ reason: String?) {
-        window?.subtitle = reason ?? ""
+        cannotShareReason = reason
+        updateSubtitle()
+    }
+
+    /// When a gesture in the Preview pane cannot be mapped to a complete
+    /// Source block (e.g. malformed or incomplete HTML markup), explain to the
+    /// user via the window subtitle to select in Source.
+    func setPreviewUnmappableReason(_ reason: String?) {
+        previewUnmappableReason = reason
+        updateSubtitle()
+    }
+
+    private func updateSubtitle() {
+        if let previewUnmappableReason {
+            window?.subtitle = previewUnmappableReason
+        } else if let cannotShareReason {
+            window?.subtitle = cannotShareReason
+        } else {
+            window?.subtitle = ""
+        }
     }
 
     var currentZoomFactor: Double {
