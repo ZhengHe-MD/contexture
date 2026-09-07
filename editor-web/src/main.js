@@ -309,6 +309,41 @@ window.__contexture_getContent = function getContent() {
   return view.state.doc.toString();
 };
 
+let currentViewMode = document.getElementById("root")?.getAttribute("data-view-mode") || "previewOnly";
+
+function applyViewMode(mode) {
+  const previousMode = currentViewMode;
+  currentViewMode = mode;
+  const root = document.getElementById("root");
+  if (root) {
+    root.setAttribute("data-view-mode", mode);
+  }
+
+  if (mode === "split" && previousMode === "previewOnly") {
+    scrollMap = null;
+    view.requestMeasure();
+    requestAnimationFrame(() => {
+      scrollMap = null;
+      const map = currentScrollMap();
+      if (map) {
+        const target = map.previewToSource(previewScrollY());
+        expectedSourceScrollTop = target;
+        view.scrollDOM.scrollTo({ top: target, behavior: "auto" });
+      }
+    });
+  } else if (mode === "previewOnly") {
+    scrollMap = null;
+  }
+}
+
+window.__contexture_setViewMode = function setViewMode(mode) {
+  applyViewMode(mode);
+};
+
+window.__contexture_getViewMode = function getViewMode() {
+  return currentViewMode;
+};
+
 // The Preview iframe's document is replaced wholesale on every update (it
 // cannot patch itself in place — it has no JavaScript, by design; see
 // index.html). That means a naive `srcdoc` assignment resets scroll to the
@@ -366,6 +401,7 @@ function previewMaximumScroll() {
 
 function currentScrollMap() {
   if (scrollMap) return scrollMap;
+  if (currentViewMode === "previewOnly") return null;
   const previewDocument = previewFrame.contentDocument;
   if (!previewDocument?.body) return null;
 
@@ -392,6 +428,7 @@ function currentScrollMap() {
 
 function syncPreviewFromSource() {
   sourceScrollFrame = null;
+  if (currentViewMode === "previewOnly") return;
   const map = currentScrollMap();
   const previewWindow = previewFrame.contentWindow;
   if (!map || !previewWindow) return;
@@ -401,6 +438,7 @@ function syncPreviewFromSource() {
 }
 
 function sourceDidScroll() {
+  if (currentViewMode === "previewOnly") return;
   const current = view.scrollDOM.scrollTop;
   if (
     expectedSourceScrollTop !== null
@@ -427,6 +465,8 @@ function previewScrollPollTick() {
     return;
   }
   expectedPreviewScrollY = null;
+
+  if (currentViewMode === "previewOnly") return;
 
   const map = currentScrollMap();
   if (!map) return;

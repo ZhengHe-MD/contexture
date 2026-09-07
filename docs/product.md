@@ -72,10 +72,21 @@ persistent count of Armed snapshots and offers a single-key clear.
 - Use standard macOS window chrome and traffic-light placement.
 - Give the first editor window at least two-thirds of the visible display area,
   then remember the size the writer chooses.
-- Keep the Source and Preview as a full-height split view; the divider runs
-  continuously from the top of the content area to the bottom.
-- Keep vertical scrolling synchronized in both directions so the other pane
-  follows the same part of the Document when the writer focuses on one pane.
+- Support two View Modes: **Preview Only** (the default) and **Split View**.
+  Preview Only displays the full-width rendered Preview and hides the Source pane
+  while preserving Preview text Selection, diagram interactions, and external
+  file reloads. Split View presents the Source and Preview as a full-height
+  split view where the divider runs continuously from the top of the content
+  area to the bottom.
+- Provide a View menu (`⌘1` for Preview Only, `⌘2` for Split View, `⌘/` to
+  toggle) and a titlebar segmented control with SF Symbol icons (`eye` and
+  `rectangle.split.2x1`) for switching modes, persisting the writer's preference
+  across windows.
+- When switching between View Modes, immediately align the Source and Preview
+  scroll positions so the writer never loses their reading place.
+- Keep vertical scrolling synchronized in both directions in Split View so the
+  other pane follows the same part of the Document when the writer focuses on
+  one pane.
 - Keep leading YAML front matter in the Source but omit it from the Preview.
   When it contains a non-empty string `title`, show that title in the native
   window chrome; otherwise use the Document's filename.
@@ -136,7 +147,7 @@ The first product should include:
 
 - a native macOS editor shell around a CodeMirror 6 editor and Preview;
 - Source plus rendered Preview with synchronized Selection and vertical
-  scrolling;
+  scrolling across Preview Only and Split View modes;
 - static rendering of lowercase `mermaid` fenced blocks, with an accessible
   name and a local inline error for invalid Diagram Source;
 - local-file opening, safe autosave, and flush-on-publish;

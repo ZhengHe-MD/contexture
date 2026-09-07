@@ -27,6 +27,15 @@ body {
   height: 100%;
 }
 
+#root[data-view-mode="previewOnly"] #editor,
+#root[data-view-mode="previewOnly"] #divider {
+  display: none;
+}
+
+#root[data-view-mode="previewOnly"] #preview {
+  flex: 1 1 100%;
+}
+
 #editor {
   overflow: hidden;
 }
