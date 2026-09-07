@@ -168,5 +168,136 @@ import Testing
         #expect(previewItem.state == .on)
         #expect(splitItem.state == .off)
     }
+
+    @Test @MainActor func zoomActionsSwitchAndValidateMenuItems() throws {
+        let suiteName = "ContextureApp.EditorWindowControllerTests.Zoom.\(UUID().uuidString)"
+        let isolatedDefaults = UserDefaults(suiteName: suiteName)!
+        isolatedDefaults.removePersistentDomain(forName: suiteName)
+
+        let document = MarkdownDocument()
+        let controller = EditorWindowController(
+            frameAutosaveName: nil,
+            userDefaults: isolatedDefaults
+        )
+        document.addWindowController(controller)
+        controller.windowDidLoad()
+        defer {
+            document.removeWindowController(controller)
+            controller.close()
+            isolatedDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        #expect(controller.currentZoomFactor == 1.0)
+
+        let zoomInItem = NSMenuItem(title: "Zoom In", action: #selector(EditorWindowController.zoomIn(_:)), keyEquivalent: "")
+        let zoomOutItem = NSMenuItem(title: "Zoom Out", action: #selector(EditorWindowController.zoomOut(_:)), keyEquivalent: "")
+        let actualSizeItem = NSMenuItem(title: "Actual Size", action: #selector(EditorWindowController.actualSize(_:)), keyEquivalent: "")
+
+        // At 100%: zoom in and zoom out are enabled, actual size is disabled.
+        #expect(controller.validateMenuItem(zoomInItem))
+        #expect(controller.validateMenuItem(zoomOutItem))
+        #expect(!controller.validateMenuItem(actualSizeItem))
+
+        // Zoom In
+        controller.zoomIn(nil)
+        #expect(controller.currentZoomFactor == 1.15)
+        #expect(DocumentZoom.preferred(in: isolatedDefaults) == 1.15)
+        #expect(controller.validateMenuItem(zoomInItem))
+        #expect(controller.validateMenuItem(zoomOutItem))
+        #expect(controller.validateMenuItem(actualSizeItem))
+
+        // Reset to Actual Size
+        controller.actualSize(nil)
+        #expect(controller.currentZoomFactor == 1.00)
+        #expect(DocumentZoom.preferred(in: isolatedDefaults) == 1.00)
+        #expect(!controller.validateMenuItem(actualSizeItem))
+
+        // Zoom Out
+        controller.zoomOut(nil)
+        #expect(controller.currentZoomFactor == 0.85)
+        #expect(DocumentZoom.preferred(in: isolatedDefaults) == 0.85)
+        #expect(controller.validateMenuItem(actualSizeItem))
+    }
+
+    @Test @MainActor func zoomReachesBoundsAndDisablesMenuItems() throws {
+        let suiteName = "ContextureApp.EditorWindowControllerTests.ZoomBounds.\(UUID().uuidString)"
+        let isolatedDefaults = UserDefaults(suiteName: suiteName)!
+        isolatedDefaults.removePersistentDomain(forName: suiteName)
+
+        let document = MarkdownDocument()
+        let controller = EditorWindowController(
+            frameAutosaveName: nil,
+            userDefaults: isolatedDefaults
+        )
+        document.addWindowController(controller)
+        controller.windowDidLoad()
+        defer {
+            document.removeWindowController(controller)
+            controller.close()
+            isolatedDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let zoomInItem = NSMenuItem(title: "Zoom In", action: #selector(EditorWindowController.zoomIn(_:)), keyEquivalent: "")
+        let zoomOutItem = NSMenuItem(title: "Zoom Out", action: #selector(EditorWindowController.zoomOut(_:)), keyEquivalent: "")
+
+        // Step up to maximum
+        for _ in 0..<15 {
+            controller.zoomIn(nil)
+        }
+        #expect(controller.currentZoomFactor == DocumentZoom.maximumFactor)
+        #expect(!controller.validateMenuItem(zoomInItem))
+        #expect(controller.validateMenuItem(zoomOutItem))
+
+        // Step down to minimum
+        for _ in 0..<20 {
+            controller.zoomOut(nil)
+        }
+        #expect(controller.currentZoomFactor == DocumentZoom.minimumFactor)
+        #expect(controller.validateMenuItem(zoomInItem))
+        #expect(!controller.validateMenuItem(zoomOutItem))
+    }
+
+    @Test @MainActor func zoomSynchronizesAcrossMultipleOpenControllers() throws {
+        let suiteName = "ContextureApp.EditorWindowControllerTests.ZoomSync.\(UUID().uuidString)"
+        let isolatedDefaults = UserDefaults(suiteName: suiteName)!
+        isolatedDefaults.removePersistentDomain(forName: suiteName)
+
+        let document1 = MarkdownDocument()
+        let controller1 = EditorWindowController(
+            frameAutosaveName: nil,
+            userDefaults: isolatedDefaults
+        )
+        document1.addWindowController(controller1)
+        controller1.windowDidLoad()
+
+        let document2 = MarkdownDocument()
+        let controller2 = EditorWindowController(
+            frameAutosaveName: nil,
+            userDefaults: isolatedDefaults
+        )
+        document2.addWindowController(controller2)
+        controller2.windowDidLoad()
+
+        defer {
+            document1.removeWindowController(controller1)
+            controller1.close()
+            document2.removeWindowController(controller2)
+            controller2.close()
+            isolatedDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        #expect(controller1.currentZoomFactor == 1.0)
+        #expect(controller2.currentZoomFactor == 1.0)
+
+        // Changing zoom in controller 1 syncs controller 2 immediately
+        controller1.zoomIn(nil)
+        #expect(controller1.currentZoomFactor == 1.15)
+        #expect(controller2.currentZoomFactor == 1.15)
+
+        // Resetting in controller 2 syncs controller 1 immediately
+        controller2.actualSize(nil)
+        #expect(controller1.currentZoomFactor == 1.00)
+        #expect(controller2.currentZoomFactor == 1.00)
+    }
 }
 

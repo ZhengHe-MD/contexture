@@ -82,6 +82,12 @@ persistent count of Armed snapshots and offers a single-key clear.
   toggle) and a titlebar segmented control with SF Symbol icons (`eye` and
   `rectangle.split.2x1`) for switching modes, persisting the writer's preference
   across windows.
+- Provide Document zoom in discrete steps from 50% to 300% (default 100%) via
+  the View menu (`⌘+`/`⌘=` to zoom in, `⌘-` to zoom out, `⌘0` for actual size).
+  Scaling applies to the entire Document view so both panes remain proportional
+  in Split View. Display an ephemeral magnification percentage HUD overlay on
+  the active window when zoom changes, synchronize open windows immediately,
+  and persist the writer's preferred scale across windows.
 - When switching between View Modes, immediately align the Source and Preview
   scroll positions so the writer never loses their reading place.
 - Keep vertical scrolling synchronized in both directions in Split View so the

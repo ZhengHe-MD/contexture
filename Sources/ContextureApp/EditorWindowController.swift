@@ -70,6 +70,24 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
             // resizing wins.
             window.setFrameAutosaveName(frameAutosaveName)
         }
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(preferredZoomDidChange(_:)),
+            name: DocumentZoom.didChangeNotification,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func preferredZoomDidChange(_ notification: Notification) {
+        guard let newFactor = notification.userInfo?[DocumentZoom.factorUserInfoKey] as? Double else { return }
+        if notification.object as? EditorViewController !== editorViewController {
+            editorViewController.setZoomFactor(newFactor, showHUD: false, persistAsDefault: false)
+        }
     }
 
     @available(*, unavailable)
@@ -228,6 +246,22 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
     func setCannotShareReason(_ reason: String?) {
         window?.subtitle = reason ?? ""
     }
+
+    var currentZoomFactor: Double {
+        editorViewController.currentZoomFactor
+    }
+
+    @objc func zoomIn(_ sender: Any?) {
+        editorViewController.zoomIn()
+    }
+
+    @objc func zoomOut(_ sender: Any?) {
+        editorViewController.zoomOut()
+    }
+
+    @objc func actualSize(_ sender: Any?) {
+        editorViewController.actualSize()
+    }
 }
 
 extension EditorWindowController: NSMenuItemValidation {
@@ -241,6 +275,12 @@ extension EditorWindowController: NSMenuItemValidation {
             return true
         case #selector(toggleViewMode(_:)):
             return true
+        case #selector(zoomIn(_:)):
+            return currentZoomFactor < DocumentZoom.maximumFactor - DocumentZoom.tolerance
+        case #selector(zoomOut(_:)):
+            return currentZoomFactor > DocumentZoom.minimumFactor + DocumentZoom.tolerance
+        case #selector(actualSize(_:)):
+            return abs(currentZoomFactor - DocumentZoom.defaultFactor) > DocumentZoom.tolerance
         default:
             return true
         }
