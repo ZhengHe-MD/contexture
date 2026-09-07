@@ -22,6 +22,8 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
     private var isReady = false
     private let userDefaults: UserDefaults
     private(set) var currentViewMode: ViewMode
+    private(set) var currentZoomFactor: Double
+    private let zoomHUD = ZoomIndicatorHUDView()
 
     var onContentChanged: ((String) -> Void)?
     var onSelectionChanged: ((EditorSelectionChange) -> Void)?
@@ -33,6 +35,8 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
         self.currentViewMode = ViewMode.preferred(in: userDefaults)
+        let initialZoom = DocumentZoom.preferred(in: userDefaults)
+        self.currentZoomFactor = initialZoom
         let configuration = WKWebViewConfiguration()
         let contentController = WKUserContentController()
         configuration.userContentController = contentController
@@ -46,6 +50,7 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
         // with no `allow-scripts` (see EditorViewController's class doc
         // comment and PreviewDocumentBuilder).
         self.webView = WKWebView(frame: .zero, configuration: configuration)
+        self.webView.pageZoom = CGFloat(initialZoom)
         super.init(nibName: nil, bundle: nil)
         webView.navigationDelegate = self
         contentController.add(messageHandler, name: "contexture")
@@ -60,12 +65,17 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
     override func loadView() {
         let container = NSView()
         webView.translatesAutoresizingMaskIntoConstraints = false
+        zoomHUD.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(webView)
+        container.addSubview(zoomHUD)
         NSLayoutConstraint.activate([
             webView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             webView.topAnchor.constraint(equalTo: container.topAnchor),
             webView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+
+            zoomHUD.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            zoomHUD.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -32),
         ])
         view = container
     }
@@ -111,6 +121,35 @@ final class EditorViewController: NSViewController, EditorBridgeDelegate, WKNavi
                   let json = String(data: payload, encoding: .utf8) else { return }
             webView.evaluateJavaScript("window.__contexture_setViewMode(\(json))")
         }
+    }
+
+    func setZoomFactor(_ factor: Double, showHUD: Bool = true, persistAsDefault: Bool = true) {
+        let clamped = DocumentZoom.clamp(factor)
+        currentZoomFactor = clamped
+        webView.pageZoom = CGFloat(clamped)
+        if persistAsDefault {
+            DocumentZoom.setPreferred(clamped, in: userDefaults)
+            NotificationCenter.default.post(
+                name: DocumentZoom.didChangeNotification,
+                object: self,
+                userInfo: [DocumentZoom.factorUserInfoKey: clamped]
+            )
+        }
+        if showHUD {
+            zoomHUD.show(percentage: DocumentZoom.percentageString(for: clamped))
+        }
+    }
+
+    func zoomIn() {
+        setZoomFactor(DocumentZoom.zoomedIn(from: currentZoomFactor), showHUD: true, persistAsDefault: true)
+    }
+
+    func zoomOut() {
+        setZoomFactor(DocumentZoom.zoomedOut(from: currentZoomFactor), showHUD: true, persistAsDefault: true)
+    }
+
+    func actualSize() {
+        setZoomFactor(DocumentZoom.defaultFactor, showHUD: true, persistAsDefault: true)
     }
 
     // MARK: EditorBridgeDelegate

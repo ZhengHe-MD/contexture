@@ -97,6 +97,32 @@ enum AppMenuBuilder {
             keyEquivalent: "/"
         )
         toggleItem.keyEquivalentModifierMask = [.command]
+        viewMenu.addItem(NSMenuItem.separator())
+        let actualSizeItem = viewMenu.addItem(
+            withTitle: "Actual Size",
+            action: #selector(EditorWindowController.actualSize(_:)),
+            keyEquivalent: "0"
+        )
+        actualSizeItem.keyEquivalentModifierMask = [.command]
+        let zoomInItem = viewMenu.addItem(
+            withTitle: "Zoom In",
+            action: #selector(EditorWindowController.zoomIn(_:)),
+            keyEquivalent: "+"
+        )
+        zoomInItem.keyEquivalentModifierMask = [.command]
+        let zoomInEqualItem = viewMenu.addItem(
+            withTitle: "Zoom In",
+            action: #selector(EditorWindowController.zoomIn(_:)),
+            keyEquivalent: "="
+        )
+        zoomInEqualItem.keyEquivalentModifierMask = [.command]
+        zoomInEqualItem.isAlternate = true
+        let zoomOutItem = viewMenu.addItem(
+            withTitle: "Zoom Out",
+            action: #selector(EditorWindowController.zoomOut(_:)),
+            keyEquivalent: "-"
+        )
+        zoomOutItem.keyEquivalentModifierMask = [.command]
 
         let sharingMenuItem = NSMenuItem()
         mainMenu.addItem(sharingMenuItem)
