@@ -22,9 +22,10 @@ if [ -f "$SETTINGS_PATH" ]; then
   # a missing `.hooks` is `null`, and `null // empty` produces *zero* jq
   # output rather than `null` — piped into `mv`, that would silently
   # truncate the whole settings file to empty.
-  jq --arg cmd "$BIN_PATH" '
-    if ((.hooks.UserPromptSubmit // []) | any(.hooks[]?.command == $cmd)) then
-      .hooks.UserPromptSubmit |= map(select(.hooks[]?.command != $cmd))
+  QUOTED_CMD="\"$BIN_PATH\""
+  jq --arg cmd "$BIN_PATH" --arg quoted_cmd "$QUOTED_CMD" '
+    if ((.hooks.UserPromptSubmit // []) | any(.hooks[]?.command == $cmd or .hooks[]?.command == $quoted_cmd)) then
+      .hooks.UserPromptSubmit |= map(select(.hooks[]?.command != $cmd and .hooks[]?.command != $quoted_cmd))
     else
       .
     end
