@@ -46,7 +46,11 @@ BIN_PATH="$INSTALL_DIR/codex-adapter"
 cp "$(resolve_adapter_binary CodexAdapter)" "$BIN_PATH"
 chmod +x "$BIN_PATH"
 
-CONFIG_PATH="${CODEX_CONFIG_PATH:-$HOME/.codex/config.json}"
+if [ -z "${CODEX_CONFIG_PATH:-}" ] && [ -f "$HOME/.codex/hooks.json" ]; then
+  CONFIG_PATH="$HOME/.codex/hooks.json"
+else
+  CONFIG_PATH="${CODEX_CONFIG_PATH:-$HOME/.codex/config.json}"
+fi
 CONFIG_DIR="$(dirname "$CONFIG_PATH")"
 mkdir -p "$CONFIG_DIR"
 if [ ! -f "$CONFIG_PATH" ]; then
@@ -54,11 +58,12 @@ if [ ! -f "$CONFIG_PATH" ]; then
 fi
 
 TMP=$(mktemp)
-jq --arg cmd "$BIN_PATH" '
+QUOTED_CMD="\"$BIN_PATH\""
+jq --arg cmd "$QUOTED_CMD" --arg raw_cmd "$BIN_PATH" '
   .hooks //= {} |
   .hooks.UserPromptSubmit //= [] |
   .hooks.UserPromptSubmit |= (
-    map(select(.hooks[]?.command != $cmd)) + [{"hooks": [{"type": "command", "command": $cmd}]}]
+    map(select(.hooks[]?.command != $cmd and .hooks[]?.command != $raw_cmd)) + [{"hooks": [{"type": "command", "command": $cmd}]}]
   )
 ' "$CONFIG_PATH" > "$TMP"
 mv "$TMP" "$CONFIG_PATH"

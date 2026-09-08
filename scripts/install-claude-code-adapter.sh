@@ -38,11 +38,12 @@ if [ ! -f "$SETTINGS_PATH" ]; then
 fi
 
 TMP=$(mktemp)
-jq --arg cmd "$BIN_PATH" '
+QUOTED_CMD="\"$BIN_PATH\""
+jq --arg cmd "$QUOTED_CMD" --arg raw_cmd "$BIN_PATH" '
   .hooks //= {} |
   .hooks.UserPromptSubmit //= [] |
   .hooks.UserPromptSubmit |= (
-    map(select(.hooks[]?.command != $cmd)) + [{"hooks": [{"type": "command", "command": $cmd}]}]
+    map(select(.hooks[]?.command != $cmd and .hooks[]?.command != $raw_cmd)) + [{"hooks": [{"type": "command", "command": $cmd}]}]
   )
 ' "$SETTINGS_PATH" > "$TMP"
 mv "$TMP" "$SETTINGS_PATH"
